@@ -127,6 +127,34 @@ create_advanced_error_analysis(finalUnwrappedPhase, phi_est_aligned, ...
 
 
 
+%% Tuỳ chỉnh lưu ảnh
+figs = findall(0, 'Type', 'figure');
+
+for i = 1:length(figs)
+    fig = figs(i);
+    figure(fig);  % Hiển thị figure lên trước khi hỏi
+
+    % Lấy tên figure
+    name = get(fig, 'Name');
+    if isempty(name)
+        name = sprintf('Figure_%d', fig.Number);
+    end
+
+    % Hỏi người dùng có muốn lưu không
+    choice = questdlg(['Bạn có muốn lưu figure: "' name '"?'], ...
+                      'Xác nhận lưu', ...
+                      'Có', 'Không', 'Có');
+
+    if strcmp(choice, 'Có')
+        % Xử lý tên cho hợp lệ làm tên file
+        name_valid = matlab.lang.makeValidName(name);
+        filename = [name_valid '.png'];
+        saveas(fig, filename);
+        disp(['Đã lưu: ' filename]);
+    else
+        disp(['Bỏ qua figure: ' name]);
+    end
+end
 
 fprintf('Hoàn thành!\n');
 
