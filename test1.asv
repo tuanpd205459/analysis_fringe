@@ -1,0 +1,87 @@
+clc;
+clear;
+close all;
+
+%% ==== THIẾT LẬP THÔNG SỐ ====
+amp = 10;
+N = 1080;
+object_type = 'gaussian_on_tilt';  % Thử với 'gaussian', 'gaussian_on_tilt', hoặc 'peaks'
+
+%% ==== TẠO LƯỚI TỌA ĐỘ ====
+[xGrid, yGrid] = meshgrid(1:N, 1:N);
+x_norm = (xGrid - N/2) / (N/2);
+y_norm = (yGrid - N/2) / (N/2);
+
+%% ==== TẠO MẶT PHA ====
+switch object_type
+    case 'gaussian'
+        phi_vat = amp * exp(-10 * (x_norm.^2 + y_norm.^2));
+
+    case 'gaussian_on_tilt'
+        gaussian_part = amp * exp(-(x_norm.^2 + y_norm.^2) / (2 * 0.2^2));
+        tilt_part = (x_norm + y_norm) * amp / 2;
+        phi_vat = gaussian_part + tilt_part;
+
+    case 'peaks'
+        peaks_part = 2 * peaks(N);
+        peaks_part = imresize(peaks_part, [N, N]);
+        tilt_part = 2 * x_norm + y_norm;
+        phi_vat = peaks_part + tilt_part;
+
+    otherwise
+        error("Loại vật thể không hỗ trợ.");
+end
+
+%% ==== WRAPPING PHA BẰNG 2 CÁCH ====
+phi_wrapped_builtin = wrapToPi(phi_vat);                     % Cách 1: dùng MATLAB
+phi_wrapped_custom  = mod(phi_vat + pi, 2*pi) - pi;          % Cách 2: thủ công
+
+%% ==== TÍNH SAI KHÁC ====
+diff_map = abs(phi_wrapped_builtin - phi_wrapped_custom);
+max_diff = max(diff_map(:));
+fprintf('Sai lệch cực đại giữa hai phương pháp wrap: %.2e rad\n', max_diff);
+
+%% ==== HIỂN THỊ KẾT QUẢ ====
+figure('Name','So sánh 2 cách wrap phase');
+
+subplot(2,2,1);
+surf(x_norm, y_norm, phi_vat, 'EdgeColor', 'none');
+title('Mặt pha gốc');
+xlabel('x'); ylabel('y'); zlabel('\phi'); colorbar; view(3); colormap jet;
+
+subplot(2,2,2);
+surf(x_norm, y_norm, phi_wrapped_builtin, 'EdgeColor', 'none');
+title('Wrapped phase - wrapToPi');
+xlabel('x'); ylabel('y'); zlabel('\phi_{wrapped}'); colorbar; view(3); colormap jet;
+
+subplot(2,2,3);
+surf(x_norm, y_norm, phi_wrapped_custom, 'EdgeColor', 'none');
+title('Wrapped phase - custom mod');
+xlabel('x'); ylabel('y'); zlabel('\phi_{wrapped}'); colorbar; view(3); colormap jet;
+
+subplot(2,2,4);
+imagesc(diff_map);
+title('Sai khác giữa hai phương pháp');
+colorbar;
+axis image;
+colormap hot;
+
+
+%%
+
+
+
+    figure();
+    
+    
+surf(phi_gt, 'EdgeColor', 'none'); title('Gốc'); axis tight; view(45, 30); colorbar;
+ figure; surf(phi_est, 'EdgeColor', 'none'); title('Pha Ước lượng'); axis tight; view(45, 30); colorbar;
+   figure; surf(phi_wrapped, 'EdgeColor', 'none'); title('Pha Wrapped'); axis tight; view(45, 30); colorbar;
+   figure; surf(phi_final, 'EdgeColor', 'none'); title('Kết quả Cuối cùng'); axis tight; view(45, 30); colorbar;
+    figure; surf(kMap, 'EdgeColor', 'none'); title('Bản đồ K (Fringe Order)'); axis tight; view(45, 30); colormap(gca, parula); colorbar;
+    
+   figure; imagesc(phi_gt); title('Gốc (2D)'); axis image; colorbar;
+   figure; imagesc(phi_est); title('Pha Ước lượng (2D)'); axis image; colorbar;
+    figure; imagesc(phi_wrapped); title('Pha Wrapped (2D)'); axis image; colorbar;
+   figure; imagesc(phi_final); title('Kết quả Cuối cùng (2D)'); axis image; colorbar;
+    figure; imagesc(kMap); title('Bản đồ K (2D)'); axis image; colormap(gca, parula); colorbar;

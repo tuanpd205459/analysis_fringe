@@ -1,41 +1,81 @@
 %% Off-Axis Holography Real & 3D Surface Reconstruction from Fringes
 % -------------------------------------------------------------------------
-
-
+% Thuật toán nâng cao chất lượng ảnh đầu vào
 clc; clear; close all;
 
-%% ==== PART 1: Đọc ảnh giao thoa ===
-addpath("C:\Users\admin\Máy tính\Lab thầy Tùng\Tài liệu a Tuân\Ảnh mẫu"); % thư mục chứa ảnh
+%% ==== PART 1: Đọc ảnh và crop ====
+addpath("C:\Users\admin\Máy tính\Lab thầy Tùng\Tài liệu a Tuân\Ảnh mẫu");
 img_name = "anh_nham_chuan.bmp";
 Img_Original = imread(img_name);
 
-% Hiển thị ảnh và cho phép chọn vùng crop bằng chuột
 figure;
 imshow(Img_Original);
 title('Dùng chuột để chọn vùng cần crop, sau đó nhấn Enter');
-
-% Dùng chuột chọn vùng và nhấn Enter để xác nhận
-Img_Cropped = imcrop;
-
-% Hiển thị ảnh đã crop
-figure;
-imshow(Img_Cropped);
-title('Ảnh sau khi crop');
-
+Img_Cropped = imcrop;  % Chọn vùng bằng chuột
 Img_Original = Img_Cropped;
+
+%% ==== PART 2: Chuyển sang ảnh xám ====
+if size(Img_Original, 3) == 3
+    gray = rgb2gray(Img_Original);
+else
+    gray = Img_Original;
+end
+gray_double = im2double(gray);
+
+%% ==== PART 3: Thử các phương pháp tăng cường ====
+
+% 1. Cân bằng histogram toàn cục
+heq_img = histeq(gray);
+
+% 2. Cân bằng histogram cục bộ (CLAHE)
+clahe_img = adapthisteq(gray);
+
+% 3. Tăng biên độ tần số cao (lọc unsharp)
+h = fspecial('unsharp');
+unsharp_img = imfilter(gray_double, h, 'replicate');
+
+% 4. Tăng độ tương phản bằng hệ số alpha
+alpha = 1.5;
+contrast_img = imadjust(gray_double, stretchlim(gray_double), [], alpha);
+
+% ==== HIỂN THỊ CÁC PHƯƠNG PHÁP ====
+figure;
+imshow(gray); title("Ảnh gốc");
+figure; imshow(heq_img); title("Histogram Equalization");
+figure; imshow(clahe_img); title("CLAHE");
+figure; imshow(unsharp_img); title("Unsharp Filtering");
+figure; imshow(contrast_img); title("Tăng tương phản alpha");
+
+%% ==== PART 4: Tăng cường vân - Phương pháp kết hợp tốt nhất ====
+
+% 1. CLAHE
+clahe_img = adapthisteq(gray);
+gray_clahe = im2double(clahe_img);
+
+% 2. Tách nền bằng Gaussian blur
+background = imgaussfilt(gray_clahe, 15);
+fringe_only = gray_clahe - background;
+fringe_only = mat2gray(fringe_only);  % chuẩn hóa 0–1
+
+% 3. Làm sắc nét
+h_unsharp = fspecial('unsharp');
+final_enhanced = imfilter(fringe_only, h_unsharp, 'replicate');
+
+% 4. Kết quả cuối
+enhanced = final_enhanced;
+
+% ==== HIỂN THỊ ẢNH KẾT QUẢ CUỐI ====
+figure;
+imshow(enhanced, []);
+title("Ảnh sau khi tăng cường vân (CLAHE + Tách nền + Unsharp)");
+
+% ==== (Tùy chọn) Lưu ảnh kết quả ====
+% imwrite(enhanced, 'anh_tang_cuong.png');
+
+
 %% ==== PART 2: Fringe Extraction & 3D Surface Reconstruction ====
 
-% --- 1. Convert to grayscale and binarize ---
-% Img_Original = I;
-if size(Img_Original, 3) == 3
-    grayImg = rgb2gray(Img_Original);
-else
-    grayImg = Img_Original;
-end
-img = im2double(grayImg);
-figure;
-imagesc(grayImg);
-title("anh dau vao");
+grayImg = heq_img;
 
 %% Otsu thresholding (invert so fringe = 1, background = 0)
 thresh = graythresh(grayImg);
@@ -124,85 +164,3 @@ BW_rotated = BW; %nếu không xoay
 figure('Name', 'Skeletonized and Rotated Fringes');
 imshow(BW_rotated); 
 title('Skeletonized Fringes (Rotated, Cropped)'); 
-hold on;
-% Tìm các vùng liên thông (fringe regions) trong ảnh nhị phân
-B = bwconncomp(BW_rotated);
-
-% Đo thuộc tính hình học của từng vùng (centroid, bounding box, v.v.)
-stats = regionprops(B, 'Centroid');
-
-% Hiển thị ảnh và đánh số các vân
-imshow(BW_rotated); hold on;
-for k = 1:B.NumObjects
-    % Lấy tọa độ trọng tâm của vùng thứ k
-    c = stats(k).Centroid(1);  % cột (x)
-    r = stats(k).Centroid(2);  % hàng (y)
-    
-    % Hiển thị số thứ tự của vân lên ảnh
-    text(c, r, num2str(k), 'Color', 'yellow', ...
-        'FontSize', 12, 'FontWeight', 'bold');
-end
-hold off;
-
-
-% --- 5. Reconstruct 3D surface from fringes ---
-lambda = 632.8e-9; % Wavelength used above
-khoang_cach_van = (lambda / 2)/cosd(abs(avg_angle)); % Fringe-to-height mapping
-
-BW = BW_rotated;
-L = bwlabel(BW);
-num_labels = max(L(:));
-X = []; Y = []; Z = [];
-
-for i = 1:num_labels
-    [y, x] = find(L == i); 
-    z = ones(size(x)) * (i-1) * khoang_cach_van;
-    X = [X; x];
-    Y = [Y; y];
-    Z = [Z; z];
-end
-
-%% Interpolate to get a smooth 3D surface
-[xq, yq] = meshgrid(1:size(BW,2), 1:size(BW,1));
-F = scatteredInterpolant(X, Y, Z, 'natural', 'nearest');
-Zq = F(xq, yq);
-Zq(~isfinite(Zq)) = 0;
-
-figure('Name', 'Reconstructed 3D Surface');
-surf(xq, yq, Zq, 'EdgeColor', 'none');
-colormap turbo;
-colorbar;
-xlabel('X (px)'); ylabel('Y (px)'); zlabel('Height (m)');
-title('3D Surface Reconstructed from Fringes');
-view([45 30]);
-c = colorbar; 
-c.Label.String = 'Height (m)';
-
-%% --- 6. Level the reconstructed surface (remove tilt) ---
-% Crop for better display
-Z = Zq(100:end-100, 100:end-100);
-[M, N] = size(Z);
-[xGrid, yGrid] = meshgrid(1:N, 1:M);
-x = xGrid(:);
-y = yGrid(:);
-z = Z(:);
-
-%% Fit and remove tilt (plane subtraction)
-A = [x, y, ones(size(x))];  
-coeff = A \ z;              
-Z_fit = reshape(A * coeff, size(Z));
-Z_leveled = Z - Z_fit;  
-
-%% Normalize Z to start from zero and invert if necessary
-Z_inverted = -Z_leveled;
-Z_offset = Z_inverted - min(Z_inverted(:));
-
-figure('Name', 'Tilt-Removed (Leveled) 3D Surface');
-surf(xGrid, yGrid, Z_offset);
-shading interp;
-title('3D Surface after Tilt Removal (Leveled)');
-xlabel('X (px)');
-ylabel('Y (px)');
-zlabel('Height (m)');
-colormap parula;
-colorbar;

@@ -22,19 +22,48 @@
 clc; clear; close all;
 
 %% ==== PART 1: Off-axis Holography Simulation ====
-% Image size (number of CCD pixels)
-Ax = 1080;     
+
+% Kích thước ảnh (số điểm CCD pixels)
+Ax = 1080;
 Ay = 1080;
 N = 1080;
 
-% Coordinate grid for simulation
+% Lưới tọa độ cho mô phỏng
 [Xa, Ya] = meshgrid(1:Ax, 1:Ay);
 
-% Create a parabolic object phase (as a Gaussian for generality)
-ampPhase = 4;      % Amplitude of phase modulation
-noise = 0;         % Add noise if needed (currently not used)
+% Tạo pha đối tượng theo hình parabol (dưới dạng Gaussian cho tổng quát)
+% ampPhase = 4;      % Biên độ điều chế pha
+% noise = 0;         % Thêm nhiễu nếu cần (hiện tại không dùng)
+% [x, y] = meshgrid(linspace(-1,1,N));
+% phi_obj = ampPhase * exp(-10*(x.^2 + y.^2)); % Hồi quy pha Gaussian
+% Kích thước ảnh
+N = 1080;
+
+% Lưới tọa độ chuẩn hóa về [-1,1] để mô phỏng hình học
 [x, y] = meshgrid(linspace(-1,1,N));
-phi_obj = ampPhase * exp(-10*(x.^2 + y.^2)); % Gaussian phase profile
+
+% Thành phần 1: Dốc tuyến tính (xu hướng chính)
+ramp_x = 0.3 * x;
+ramp_y = 0.2 * y;
+
+% Thành phần 2: Các đỉnh Gaussian
+peak1 = 8 * exp(-((x - 0.5).^2 + (y - 0.2).^2) / 0.05);
+peak2 = 6 * exp(-((x + 0.4).^2 + (y + 0.3).^2) / 0.08);
+peak3 = -4 * exp(-((x).^2 + (y - 0.5).^2) / 0.06);
+
+% Thành phần 3: Sóng sin
+wave1 = 3 * sin(10 * x) .* cos(8 * y);
+wave2 = 3 * sin(6 * y) .* cos(6 * x);
+
+% Thành phần 4: Bất liên tục
+discontinuity = zeros(size(x));
+discontinuity(y > 0 & x < 0.2) = 4;
+
+% Tổng hợp pha thật
+true_phase = ramp_x  +  wave1 + wave2 + discontinuity;
+
+phi_obj = true_phase;
+
 
 % Generate object wave
 Es = exp(1i * phi_obj);
@@ -58,7 +87,7 @@ theta = 5 * pi / 180;   % Off-axis angle in radians
 k = 2 * pi / lambda;                    
 kSinTheta = k * sin(theta);            
 scale_ref = 1e-7; % Scaling for reference phase spatial frequency
-phi_ref = scale_ref * kSinTheta * Xa;
+phi_ref = scale_ref * kSinTheta * Ya;
 E0 = exp(1i * phi_ref);  % Reference wave, tilted along x-axis
 
 % Convert phase to surface height (in meters)
@@ -66,12 +95,12 @@ h_surface = (lambda/(4*pi)) * phi_obj; % Surface height (m)
 %%
 % Visualize reference phase and phase surface
 figure('Name', 'Reference Wave Visualization');
-subplot(1,2,1)
+subplot(1,2,1);
 imagesc(angle(E0)); 
 title('Reference Wave Phase (\phi_{ref})'); 
 axis square; colormap(jet); colorbar; axis off;
 
-subplot(1,2,2)
+subplot(1,2,2);
 surf(phi_ref, 'EdgeColor', 'none'); 
 title('Reference Phase Surface (\phi_{ref})'); 
 xlabel('x (px)'); ylabel('y (px)'); zlabel('\phi_{ref}');
