@@ -8,7 +8,7 @@ fprintf('--> Bước 1: Mô phỏng Hologram...\n');
 % --- Thiết lập thông số ---
 M = 512; % Kích thước ảnh (chiều cao)
 N = 512; % Kích thước ảnh (chiều rộng)
-snr = 15;
+snr = 20;
 fx = 40 / N; % Tần số sóng mang
 fy = -60 / M;
 
@@ -16,12 +16,23 @@ params = struct();
 params = set_default_params(params);
 auto_fft = 0;
 
+
+params.filter_type = 'circle';         % 'circle' | 'rectangle'
+params.filter_radius = 50;             % (px) bán kính bộ lọc tròn
+params.filter_width = 150;             % (px) chiều rộng HCN
+params.filter_height = 120;            % (px) chiều cao HCN
+
+% Ức chế DC (zero-order)
+params.dc_suppression_radius = 25;     % (px) bán kính loại bỏ trung tâm
+
+
+
 % nhiễu - phương sai: sigma
 sigma = pi/5;
 noise_level = 0;
 noise = noise_level * randn(N, N) .* sigma;
 
-phase_type = "microsphere_array"; 
+phase_type = "peaks"; 
 
 
 fprintf('Đang tạo đối tượng pha loại: %s với kích thước M=%d, N=%d\n', phase_type, M, N);
@@ -30,8 +41,8 @@ switch lower(phase_type)
     case 'peaks'
 
         [X, Y] = meshgrid(linspace(-1,1,N), linspace(-1,1,M));
-
-        object_phase = 2 * peaks(3*X, 3*Y);
+        object_phase_without_noise = 2 * peaks(3*X, 3*Y);
+        
     case 'microsphere_array'
         gridSize = 3;   % 3x3 = 9 đỉnh
         A = 10;         % biên độ Gaussian
@@ -64,29 +75,76 @@ switch lower(phase_type)
         error('Loại pha chưa được định nghĩa!');
 end
 
-% --- Hiển thị kết quả (tùy chọn) ---
+%%
+fprintf('Đang tạo đối tượng pha loại: %s với kích thước M=%d, N=%d\n', phase_type, M, N);
+
+% Thêm nhiễu vào pha đối tượng
+object_phase = awgn(object_phase_without_noise, snr, 'measured', 'db');
 figure;
 surf(object_phase,"EdgeColor","none");
+title("doi tuong co nhieu- groundtruth");
+% --- Hiển thị pha gốc (không nhiễu) ---
+figure;
+surf(object_phase_without_noise, "EdgeColor", "none");
 colorbar;
-title(['Đối tượng pha (khong nhieu): ', strrep(phase_type, '_', ' ')]);
+title(['Đối tượng pha (không nhiễu): ', strrep(phase_type, '_', ' ')]);
 
+% 3. TẠO HOLOGRAM
+fprintf('--> Bước 2: Tạo Hologram...\n');
+
+% --- Thiết lập thông số sóng mang ---
+fx = 40 / N; % Tần số sóng mang
+fy = -60 / M;
+[X, Y] = meshgrid(1:N, 1:M);
+
+% Cường độ nền và điều biến
+a = 1.0; % Background intensity
+b = 0.8; % Modulation depth
+
+% Sóng mang phẳng (plane wave carrier)
+carrier = 2 * pi * (fx * X + fy * Y);
+
+% --- Tạo hologram (ảnh giao thoa) theo công thức mới ---
+hologram = a + b .* cos(carrier + object_phase);
+
+% --- Thêm nhiễu Gaussian trắng ---
+hologram_Gauss = awgn(hologram, snr, 'measured', 'dB');
+
+% --- Hiển thị Hologram ---
+figure;
+imshow(hologram_Gauss, []);
+title('Ảnh Hologram (Giao thoa) có nhiễu');
+hologram = hologram_Gauss;
 %% 3. Tạo bề mặt interferogram
 
 % --- Tạo hologram từ pha gốc ---
-hologram = generate_test_hologram(M, N, fx, fy, object_phase, snr);
-figure;
-imagesc(hologram);
-title("Anh hologram co nhieu");
+% [hologram, ref_hologram] = generate_test_hologram(M, N, fx, fy, object_phase, snr);
+% figure;
+% imagesc(hologram);
+% title("Anh hologram co nhieu");
 
 hologram = mat2gray(hologram);
 imwrite(hologram, 'hologram.bmp');
 
 %% 4. Wrapped phase - in ideal case, which is without noise in Fourier or filtering
+
 wrapped_phase = wrapToPi(object_phase) ;
 figure;
 surf(wrapped_phase,"EdgeColor","none");
 colorbar;
 title('wrapped phase: ');
+% 
+% [wrapped_phase, ~] = reconstruct_phase_auto(hologram, params);
+% %theem nhieu vao wrapped_phase, voi cuong do nhieu giam 1/2 lan. 
+% wrapped_phase = awgn(wrapped_phase,snr,'measured','dB'); 
+
+% 
+% figure;
+% surf(wrapped_phase,"EdgeColor","none");
+% colorbar;
+% title('wrapped phase: ');
+
+
 %% 5. Noise removal
 hologram = imgaussfilt(hologram, 1);
 hologram = medfilt2(hologram, [3 3]);
@@ -120,7 +178,6 @@ phi_est = phi_est - min(phi_est(:));
 [X, Y] = meshgrid(1:N, 1:M);
 plane_phase = 2*pi*(fx*X + fy*Y);
 plane_phase = plane_phase - min(plane_phase(:));
-
 phi_est = phi_est - plane_phase - (max(phi_est(:)- max(plane_phase(:))))/2;
 
 
@@ -131,21 +188,21 @@ fprintf('--> Bước 4: Giải bọc pha và tinh chỉnh kết quả...\n');
 
 [finalUnwrappedPhase, kMap] = unwrapUsingEstimate(phi_est, wrapped_phase);
 
-fprintf("chay k map");
-kMap = kMap - min(kMap(:));
-fprintf("ket thuc kmap");
-figure();
-surf(kMap, 'EdgeColor', 'none');
-title("kMap");
-xlabel('x'); ylabel('y'); zlabel('(rad)');
-colormap; colorbar; 
-off_set = 2;
-% finalUnwrappedPhase = finalUnwrappedPhase(off_set:end-off_set,off_set:end-off_set );
-figure("Name","Kết quả");
-surf(finalUnwrappedPhase, 'EdgeColor', 'none');
-title("Kết quả finalUnwrappedPhase");
-xlabel('x'); ylabel('y'); zlabel('(rad)');
-colormap; colorbar; 
+% fprintf("chay k map");
+% kMap = kMap - min(kMap(:));
+% fprintf("ket thuc kmap");
+% figure();
+% surf(kMap, 'EdgeColor', 'none');
+% title("kMap");
+% xlabel('x'); ylabel('y'); zlabel('(rad)');
+% colormap; colorbar; 
+% off_set = 2;
+% % finalUnwrappedPhase = finalUnwrappedPhase(off_set:end-off_set,off_set:end-off_set );
+% figure("Name","Kết quả");
+% surf(finalUnwrappedPhase, 'EdgeColor', 'none');
+% title("Kết quả finalUnwrappedPhase");
+% xlabel('x'); ylabel('y'); zlabel('(rad)');
+% colormap; colorbar; 
 
 
 %% 10. Refine artifacts points
@@ -159,7 +216,9 @@ title("Kết quả finalUnwrappedPhase sau khi refine");
 xlabel('x'); ylabel('y'); zlabel('(rad)');
 colormap; colorbar; 
 
-
+% Cắt biên để hiển thị tốt hơn
+offset = 2;
+finalUnwrappedPhase = finalUnwrappedPhase(offset+1:end-offset, offset+1:end-offset);
 %% 11. CÁC THUẬT TOÁN UNWRAPPING KHÁC
 unwrapped_Phase_LS_DCT = unwrapping.unwrapPhase(wrapped_phase, 'ls', 'dct'); % LS với DCT
 unwrapped_Phase_TIE_FFT = unwrapping.unwrapPhase(wrapped_phase, 'tie', 'fft'); % TIE với FFT
@@ -168,14 +227,81 @@ unwrapped_Phase_2dweight = unwrapping.unwrapPhase(wrapped_phase, '2dweight'); % 
 unwrapped_Phase_goldstein = goldstein_unwrap(wrapped_phase);
 % proposal 
 unwrapped_Phase_proposal = finalUnwrappedPhase;
+[object_phase, unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, unwrapped_Phase_noncontinue,...
+    unwrapped_Phase_2dweight, unwrapped_Phase_goldstein, unwrapped_Phase_proposal]...
+    = crop_multiple_to_smallest(object_phase, unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, unwrapped_Phase_noncontinue,...
+    unwrapped_Phase_2dweight, unwrapped_Phase_goldstein, unwrapped_Phase_proposal);
+[M,N] = size(object_phase);
+% [unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, ...
+%  unwrapped_Phase_noncontinue, unwrapped_Phase_2dweight, ...
+%  unwrapped_Phase_goldstein, unwrapped_Phase_proposal] = ...
+%     process_phases(fx, fy, M, N, unwrapped_Phase_LS_DCT, ...
+%     unwrapped_Phase_TIE_FFT, unwrapped_Phase_noncontinue, ...
+%     unwrapped_Phase_2dweight, unwrapped_Phase_goldstein, ...
+%     unwrapped_Phase_proposal);
+% Giả sử đã có:
+% object_phase, unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT,
+% unwrapped_Phase_noncontinue, unwrapped_Phase_2dweight,
+% unwrapped_Phase_goldstein, unwrapped_Phase_proposal
 
-%% 11. PHÂN TÍCH SAI SỐ
-fprintf('--> Bước 5: Tính toán và hiển thị sai số...\n');
+figure;
+titles = {'Object phase (GT)', 'LS+DCT', 'TIE+FFT', ...
+          'Noncontinue (Linh)', '2D Weighted', 'Goldstein', 'Proposal'};
 
-% Sai số RMS - và tuyệt đối
-calculateAndCompareErrors(object_phase, unwrapped_Phase_LS_DCT,...
-                unwrapped_Phase_TIE_FFT, unwrapped_Phase_noncontinue,...
-                unwrapped_Phase_2dweight, unwrapped_Phase_goldstein, unwrapped_Phase_proposal);
+phases = {object_phase, unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, ...
+          unwrapped_Phase_noncontinue, unwrapped_Phase_2dweight, ...
+          unwrapped_Phase_goldstein, unwrapped_Phase_proposal};
+
+% Tạo lưới tọa độ
+[M, N] = size(object_phase);
+[X, Y] = meshgrid(1:N, 1:M);
+
+for k = 1:length(phases)
+    subplot(2,4,k);
+    surf(X, Y, phases{k}, 'EdgeColor','none');  % hiển thị 3D
+    colormap jet; 
+    colorbar;
+    title(titles{k});
+    view(45,45);  % góc nhìn đẹp
+    axis tight; shading interp;
+end
+
+
+
+
+
+%% 11. Plot mặt cắt ngang
+fprintf('--> Bước 5: plot MCN...\n');
+% Chọn 1 đường cắt ngang (ví dụ: đường giữa ảnh theo trục y)
+row = round(size(object_phase,1)/2);
+
+% Lấy profile theo hàng đó
+x = 1:size(object_phase,2);
+profile_true        = object_phase(row,:);
+profile_LS_DCT      = unwrapped_Phase_LS_DCT(row,:);
+profile_TIE_FFT     = unwrapped_Phase_TIE_FFT(row,:);
+profile_noncontinue = unwrapped_Phase_noncontinue(row,:);
+profile_2dweight    = unwrapped_Phase_2dweight(row,:);
+profile_goldstein   = unwrapped_Phase_goldstein(row,:);
+profile_proposal    = unwrapped_Phase_proposal(row,:);
+
+% Vẽ tất cả trên 1 plot
+figure;
+plot(x, profile_true,        'k-',  'LineWidth',1.5); hold on;
+plot(x, profile_LS_DCT,      'r--', 'LineWidth',1.2);
+plot(x, profile_TIE_FFT,     'b-.', 'LineWidth',1.2);
+plot(x, profile_noncontinue, 'g:',  'LineWidth',1.5);
+plot(x, profile_2dweight,    'm-',  'LineWidth',1.2);
+plot(x, profile_goldstein,   'c--', 'LineWidth',1.2);
+plot(x, profile_proposal,    'y-',  'LineWidth',1.5);
+
+grid on;
+xlabel('Pixel index');
+ylabel('Phase (rad)');
+title('So sánh mặt cắt ngang (row giữa ảnh)');
+legend('Ground Truth', 'LS+DCT', 'TIE+FFT', 'Non-continue (Linh)', ...
+       '2D Weighted', 'Goldstein', 'Proposal');
+
 
 
 %% 6. PHÂN TÍCH SAI SỐ (TIẾP THEO)
@@ -196,124 +322,48 @@ error_goldstein = error_goldstein - min(error_goldstein(:));
 error_proposal = error_proposal - min(error_proposal(:));
 
 
+%%
+% --- Tính sai số giữa object_phase và các bề mặt khác ---
+phases = { unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, ...
+          unwrapped_Phase_noncontinue, unwrapped_Phase_2dweight, ...
+          unwrapped_Phase_goldstein, unwrapped_Phase_proposal};
 
+phase_names = {'phi\_est', 'LS-DCT', 'TIE-FFT', ...
+               'Non-continue', '2D-weight', ...
+               'Goldstein', 'Proposed'};
+
+nPhase = numel(phases);
+errors = struct();
+
+for k = 1:nPhase
+    phase = phases{k};
+    
+    % --- B1: Loại bỏ offset (so sánh công bằng)
+    offset = median(phase(:)) - median(object_phase(:));
+    phase_adj = phase - offset;
+    
+    % --- B2: Tính sai số
+    diff = phase_adj - object_phase;
+    
+    rmse = sqrt(mean(diff(:).^2));
+    mae  = mean(abs(diff(:)));
+    maxe = max(abs(diff(:)));
+    
+    % --- B3: Lưu kết quả
+    errors(k).Name = phase_names{k};
+    errors(k).RMSE = rmse;
+    errors(k).MAE  = mae;
+    errors(k).MAX  = maxe;
+end
+
+% --- Hiển thị kết quả ---
+disp('Sai số so với object_phase:');
+for k = 1:nPhase
+    fprintf('%-12s | RMSE = %.4f | MAE = %.4f | MAX = %.4f\n', ...
+        errors(k).Name, errors(k).RMSE, errors(k).MAE, errors(k).MAX);
+end
 
 %% 8. HIỂN THỊ MẶT CẮT NGANG SAI SỐ
-fprintf('--> Bước 7: Vẽ đồ thị mặt cắt ngang sai số...\n');
-
-% Lấy chỉ số của hàng ở giữa từ một trong các ma trận sai số
-[num_rows, ~] = size(error_LS_DCT);
-middle_row_index = round(num_rows / 2);
-
-% Trích xuất dữ liệu mặt cắt ngang (hàng giữa) từ mỗi ma trận sai số
-cross_section_LS_DCT = error_LS_DCT(middle_row_index, :);
-cross_section_TIE_FFT = error_TIE_FFT(middle_row_index, :);
-cross_section_noncontinue = error_noncontinue(middle_row_index, :);
-cross_section_2dweight = error_2dweight(middle_row_index, :);
-cross_section_goldstein = error_goldstein(middle_row_index,:);
-cross_section_proposal = error_proposal(middle_row_index,:);
-
-% --- Vẽ đồ thị 2D so sánh các mặt cắt ngang ---
-figure('Name', 'Mặt Cắt Ngang Sai Số');
-hold on; % Giữ các đồ thị được vẽ trên cùng một trục
-
-
-plot(cross_section_LS_DCT, 'DisplayName', 'LS-DCT', 'LineStyle', '--');
-plot(cross_section_TIE_FFT, 'DisplayName', 'TIE-FFT', 'Color','g');
-plot(cross_section_noncontinue, 'DisplayName', 'Phương pháp Path-following', "LineWidth",2);
-plot(cross_section_2dweight, 'DisplayName', '2D Weighted', 'LineWidth', 1.5,'LineStyle', '-.');
-plot(cross_section_goldstein, 'DisplayName', 'Goldstein', 'LineWidth', 1.5, 'Color', [0.8500 0.3250 0.0980]);
-plot(cross_section_proposal, 'DisplayName', 'Proposed Method', 'LineWidth', 2, 'Color', 'm');
-
-hold off; % Thả trục
-
-% --- Thêm các chi tiết cho đồ thị ---
-title(['Mặt Cắt Ngang Sai Số Tại Hàng y = ' num2str(middle_row_index)]);
-xlabel('Chỉ số cột (x)');
-ylabel('Sai số tuyệt đối (rad)');
-legend('show', 'Location', 'best'); % Hiển thị chú giải ở vị trí tốt nhất
-grid on; % Bật lưới để dễ đọc
-axis tight; % Điều chỉnh trục cho vừa vặn
-
-%%
-% Giả sử các biến:
-% unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, unwrapped_Phase_noncontinue,
-% unwrapped_Phase_2dweight, unwrapped_Phase_goldstein, unwrapped_Phase_proposal
-% và object_phase đã tồn tại trong workspace.
-
-% 1. Tính sai số tuyệt đối (hoặc giữ nguyên sai số có dấu nếu bạn cần đánh giá bias)
-err_LS_DCT      = unwrapped_Phase_LS_DCT      - object_phase;
-err_TIE_FFT     = unwrapped_Phase_TIE_FFT     - object_phase;
-err_noncontinue = unwrapped_Phase_noncontinue - object_phase;
-err_2dweight    = unwrapped_Phase_2dweight    - object_phase;
-err_goldstein   = unwrapped_Phase_goldstein   - object_phase;
-err_proposal    = unwrapped_Phase_proposal    - object_phase;
-
-% Nếu muốn dùng sai số tuyệt đối:
-absErr_LS_DCT      = abs(err_LS_DCT);
-absErr_TIE_FFT     = abs(err_TIE_FFT);
-absErr_noncontinue = abs(err_noncontinue);
-absErr_2dweight    = abs(err_2dweight);
-absErr_goldstein   = abs(err_goldstein);
-absErr_proposal    = abs(err_proposal);
-
-% 2. Hàm chuẩn hoá về [0,1]
-normalize01 = @(E) (E - min(E(:))) / ( max(E(:)) - min(E(:)) + eps );
-
-normErr_LS_DCT      = normalize01(absErr_LS_DCT);
-normErr_TIE_FFT     = normalize01(absErr_TIE_FFT);
-normErr_noncontinue = normalize01(absErr_noncontinue);
-normErr_2dweight    = normalize01(absErr_2dweight);
-normErr_goldstein   = normalize01(absErr_goldstein);
-normErr_proposal    = normalize01(absErr_proposal);
-
-% 3. Tính các chỉ số định lượng
-metric = @(E) struct( ...
-    'RMSE', sqrt(mean(E(:).^2)), ...
-    'MAE',  mean(abs(E(:))), ...
-    'MaxAbs', max(abs(E(:))) );
-
-m_LS_DCT      = metric(err_LS_DCT);
-m_TIE_FFT     = metric(err_TIE_FFT);
-m_noncontinue = metric(err_noncontinue);
-m_2dweight    = metric(err_2dweight);
-m_goldstein   = metric(err_goldstein);
-m_proposal    = metric(err_proposal);
-
-% (Tuỳ chọn) PSNR nếu coi object_phase như "ảnh gốc" và sai số là nhiễu:
-psnr_calc = @(orig, rec) 20*log10( max(orig(:)) / (sqrt(mean((rec(:)-orig(:)).^2)) + eps) );
-PSNR_LS_DCT      = psnr_calc(object_phase, unwrapped_Phase_LS_DCT);
-PSNR_TIE_FFT     = psnr_calc(object_phase, unwrapped_Phase_TIE_FFT);
-PSNR_noncontinue = psnr_calc(object_phase, unwrapped_Phase_noncontinue);
-PSNR_2dweight    = psnr_calc(object_phase, unwrapped_Phase_2dweight);
-PSNR_goldstein   = psnr_calc(object_phase, unwrapped_Phase_goldstein);
-PSNR_proposal    = psnr_calc(object_phase, unwrapped_Phase_proposal);
-
-% 4. Hiển thị bản đồ sai số chuẩn hoá
-algNames = { ...
-    sprintf('LS-DCT\nRMSE=%.3g MAE=%.3g', m_LS_DCT.RMSE, m_LS_DCT.MAE), ...
-    sprintf('TIE-FFT\nRMSE=%.3g MAE=%.3g', m_TIE_FFT.RMSE, m_TIE_FFT.MAE), ...
-    sprintf('Non-Continue\nRMSE=%.3g MAE=%.3g', m_noncontinue.RMSE, m_noncontinue.MAE), ...
-    sprintf('2D Weight\nRMSE=%.3g MAE=%.3g', m_2dweight.RMSE, m_2dweight.MAE), ...
-    sprintf('Goldstein\nRMSE=%.3g MAE=%.3g', m_goldstein.RMSE, m_goldstein.MAE), ...
-    sprintf('Proposal\nRMSE=%.3g MAE=%.3g', m_proposal.RMSE, m_proposal.MAE) ...
-    };
-
-normErrStack = cat(3, normErr_LS_DCT, normErr_TIE_FFT, normErr_noncontinue, ...
-                      normErr_2dweight, normErr_goldstein, normErr_proposal);
-
-figure('Name','Bản đồ sai số chuẩn hoá','NumberTitle','off');
-tiledlayout(2,3, 'Padding','compact','TileSpacing','compact');
-for k = 1:6
-    nexttile;
-    imagesc(normErrStack(:,:,k));
-    axis image off;
-    colormap(turbo); % hoặc 'jet' tuỳ ý
-    colorbar;
-    title(algNames{k}, 'Interpreter','none', 'FontSize',9);
-end
-sgtitle('So sánh sai số chuẩn hoá (0-1) giữa các thuật toán');
-
 fprintf('\nQuy trình đã hoàn thành!\n');
 
 %% ========================================================================
@@ -1122,7 +1172,7 @@ end
 
 %% theem 6/7/25 - thêm đa thức zernike
 
-function hologram_Gauss = generate_test_hologram(M, N, fx, fy, phase_object, snr)
+function [hologram_Gauss,ref_hologram] = generate_test_hologram(M, N, fx, fy, phase_object, snr)
 % Tạo ra một hologram đơn giản.
 %
 % Input:
@@ -1142,6 +1192,8 @@ b = 0.8; % Modulation depth
 
 % Sóng mang phẳng (plane wave carrier)
 carrier = 2 * pi * (fx * X + fy * Y);
+%Mặt phẳng tham chiếu
+ref_hologram = a + b .* cos(carrier);
 
 % Công thức tạo hologram
 % g = a + b * cos(sóng_mang + pha_vật)
@@ -1211,274 +1263,6 @@ end
 
 
 %% thêm ngày 21-7-25 
-% hàm tính và hiển thị sai số
-function calculateAndCompareErrors(ground_truth, varargin)
-% calculateAndCompareErrors - Tính sai số của một hoặc nhiều bề mặt 3D so với ground truth.
-%
-% Cú pháp:
-%   calculateAndCompareErrors(ground_truth, result_1, result_2, ..., result_N)
-%
-% Mô tả:
-%   Hàm này nhận đối số đầu tiên là 'ground_truth' (bề mặt 3D thực tế).
-%   Các đối số tiếp theo (result_1, result_2, ...) là các bề mặt 3D kết quả
-%   cần được đánh giá.
-%
-%   Hàm sẽ lặp qua từng bề mặt kết quả, tính toán và hiển thị:
-%   - Sai số Bình phương Trung bình gốc (RMSE) so với ground_truth.
-%   - Sai số tuyệt đối cho từng điểm dữ liệu tương ứng.
-%   - Hiển thị trên biểu đồ 3D và 2D trực quan
-
-% --- Kiểm tra số lượng đầu vào ---
-if nargin < 2
-    error('Lỗi: Cần ít nhất hai đầu vào (ground_truth và một bộ kết quả).');
-end
-
-disp('=============================================');
-disp('    BÁO CÁO SO SÁNH SAI SỐ CÁC BỀ MẶT 3D');
-disp('=============================================');
-
-% Khởi tạo dữ liệu để vẽ biểu đồ
-num_results = length(varargin);
-rmse_values = zeros(1, num_results);
-mae_values = zeros(1, num_results);
-max_error_values = zeros(1, num_results);
-result_names = cell(1, num_results);
-valid_results = [];
-all_absolute_errors = cell(1, num_results);
-
-% Màu sắc cho biểu đồ
-colors = lines(num_results);
-
-% Lấy kích thước của ground truth
-[m, n] = size(ground_truth);
-
-% Lặp qua từng bộ kết quả được cung cấp trong varargin
-for k = 1:num_results
-    final_result = varargin{k};
-    
-    % In tiêu đề cho mỗi lần so sánh
-    fprintf('\n-----------------------------------------\n');
-    fprintf('###   PHÂN TÍCH BỀ MẶT 3D SỐ %d   ###\n', k);
-    fprintf('-----------------------------------------\n');
-    
-    % --- Kiểm tra kích thước cho từng bộ kết quả ---
-    if ~isequal(size(ground_truth), size(final_result))
-        fprintf('!!! CẢNH BÁO: Bỏ qua Bề mặt %d do không cùng kích thước với ground_truth.\n', k);
-        fprintf('    Ground truth: [%d x %d], Bề mặt %d: [%d x %d]\n', ...
-                size(ground_truth, 1), size(ground_truth, 2), k, size(final_result, 1), size(final_result, 2));
-        rmse_values(k) = NaN;
-        mae_values(k) = NaN;
-        max_error_values(k) = NaN;
-        result_names{k} = sprintf('Bề mặt %d (Lỗi)', k);
-        continue;
-    end
-    
-    % --- Tính toán Sai số ---
-    
-    % 1. Sai số Tuyệt đối
-    absolute_error = abs(ground_truth - final_result);
-    mae = mean(absolute_error(:));
-    max_abs_error = max(absolute_error(:));
-    
-    % 2. Sai số Bình phương Trung bình gốc (RMSE)
-    squared_error = (ground_truth - final_result).^2;
-    mean_squared_error = mean(squared_error(:));
-    rms_error = sqrt(mean_squared_error);
-    
-    % Lưu dữ liệu để vẽ biểu đồ
-    rmse_values(k) = rms_error;
-    mae_values(k) = mae;
-    max_error_values(k) = max_abs_error;
-    result_names{k} = sprintf('Bề mặt %d', k);
-    valid_results = [valid_results, k];
-    all_absolute_errors{k} = absolute_error;
-    
-    % --- Hiển thị Kết quả cho bộ dữ liệu hiện tại ---
-    fprintf('=> Kích thước bề mặt: [%d x %d] = %d điểm\n', m, n, m*n);
-    fprintf('=> Sai số Bình phương Trung bình gốc (RMSE): %.6f\n', rms_error);
-    fprintf('=> Sai số Tuyệt đối Trung bình (MAE): %.6f\n', mae);
-    fprintf('=> Sai số Tuyệt đối Lớn nhất: %.6f\n', max_abs_error);
-    fprintf('=> Phạm vi giá trị Ground Truth: [%.3f, %.3f]\n', min(ground_truth(:)), max(ground_truth(:)));
-    fprintf('=> Phạm vi giá trị Bề mặt %d: [%.3f, %.3f]\n', k, min(final_result(:)), max(final_result(:)));
-    
-    % Hiển thị một số điểm sai số chi tiết
-    fprintf('\n=> Sai số tại một số điểm đặc trưng:\n');
-    sample_points = [1, 1; ceil(m/2), ceil(n/2); m, n; ceil(m/4), ceil(n/4); ceil(3*m/4), ceil(3*n/4)];
-    for i = 1:size(sample_points, 1)
-        row = sample_points(i, 1);
-        col = sample_points(i, 2);
-        if row <= m && col <= n
-            fprintf('   - Điểm (%d,%d): |%.4f - %.4f| = %.4f\n', ...
-                    row, col, ground_truth(row, col), final_result(row, col), absolute_error(row, col));
-        end
-    end
-end
-
-disp(' ');
-disp('=============================================');
-disp('             KẾT THÚC BÁO CÁO');
-disp('=============================================');
-
-% --- VẼ BIỂU ĐỒ ---
-if ~isempty(valid_results)
-    % Tạo figure chính với kích thước lớn hơn cho bề mặt 3D
-    fig = figure('Position', [50, 50, 1400, 900]);
-    
-    % Tạo lưới tọa độ X, Y
-    [X, Y] = meshgrid(1:n, 1:m);
-    
-    % 1. Hiển thị Ground Truth 3D
-    subplot(2, 3, 1);
-    surf(X, Y, ground_truth, 'EdgeColor', 'none');
-    title('Ground Truth (Bề mặt 3D)', 'FontWeight', 'bold');
-    xlabel('X'); ylabel('Y'); zlabel('Z');
-    colorbar;
-    view(45, 30);
-    
-    % 2. So sánh các sai số bằng bar chart
-    subplot(2, 3, 2);
-    valid_rmse = rmse_values(~isnan(rmse_values));
-    valid_mae = mae_values(~isnan(mae_values));
-    valid_max = max_error_values(~isnan(max_error_values));
-    valid_names = result_names(~isnan(rmse_values));
-    
-    if ~isempty(valid_rmse)
-        x_pos = 1:length(valid_rmse);
-        bar_width = 0.25;
-        
-        bar(x_pos - bar_width, valid_rmse, bar_width, 'FaceColor', [0.2 0.6 0.8], 'DisplayName', 'RMSE');
-        hold on;
-        bar(x_pos, valid_mae, bar_width, 'FaceColor', [0.8 0.4 0.2], 'DisplayName', 'MAE');
-        bar(x_pos + bar_width, valid_max, bar_width, 'FaceColor', [0.6 0.8 0.2], 'DisplayName', 'Max Error');
-        
-        xlabel('Bề mặt kết quả');
-        ylabel('Giá trị sai số');
-        title('So sánh các loại sai số');
-        set(gca, 'XTickLabel', valid_names);
-        xtickangle(45);
-        legend('show');
-        grid on;
-        hold off;
-    end
-    
-    % 3. Hiển thị bề mặt đầu tiên (nếu có)
-    if ~isempty(valid_results)
-        k = valid_results(1);
-        subplot(2, 3, 3);
-        surf(X, Y, varargin{k}, 'EdgeColor', 'none');
-        title(sprintf('Bề mặt %d (Kết quả)', k), 'FontWeight', 'bold');
-        xlabel('X'); ylabel('Y'); zlabel('Z');
-        colorbar;
-        view(45, 30);
-    end
-    
-    % 4. Hiển thị bản đồ sai số (Error Map) của bề mặt đầu tiên
-    if ~isempty(valid_results)
-        k = valid_results(1);
-        subplot(2, 3, 4);
-        error_surface = all_absolute_errors{k};
-        imagesc(error_surface);
-        title(sprintf('Bản đồ Sai số Bề mặt %d', k), 'FontWeight', 'bold');
-        xlabel('Cột (X)'); ylabel('Hàng (Y)');
-        colorbar;
-        colormap(gca, 'hot');
-    end
-    
-    % 5. Histogram tổng hợp sai số
-    subplot(2, 3, 5);
-    hold on;
-    for k = valid_results
-        error_data = all_absolute_errors{k}(:);
-        histogram(error_data, 30, 'FaceAlpha', 0.7, 'EdgeColor', 'none', ...
-                 'DisplayName', sprintf('Bề mặt %d', k));
-    end
-    xlabel('Sai số tuyệt đối');
-    ylabel('Tần suất');
-    title('Phân bố Sai số các Bề mặt');
-    legend('show');
-    grid on;
-    hold off;
-    
-    % 6. Cross-section comparison (cắt ngang tại giữa)
-    subplot(2, 3, 6);
-    mid_row = ceil(m/2);
-    plot(1:n, ground_truth(mid_row, :), 'k-', 'LineWidth', 3, 'DisplayName', 'Ground Truth');
-    hold on;
-    
-    for k = valid_results
-        final_result = varargin{k};
-        plot(1:n, final_result(mid_row, :), '--', 'LineWidth', 2, ...
-             'Color', colors(k, :), 'DisplayName', sprintf('Bề mặt %d', k));
-    end
-    
-    xlabel('Vị trí X');
-    ylabel('Giá trị Z');
-    title(sprintf('Cắt ngang tại hàng %d', mid_row));
-    legend('show');
-    grid on;
-    hold off;
-    
-    % Tiêu đề chung cho figure
-    sgtitle('Phân tích So sánh Bề mặt 3D', 'FontSize', 16, 'FontWeight', 'bold');
-    
-    % Nếu có nhiều bề mặt, tạo figure riêng để so sánh trực quan
-    if length(valid_results) > 1
-        fig2 = figure('Position', [100, 100, 1200, 400]);
-        
-        % Hiển thị tất cả bề mặt cạnh nhau
-        num_plots = length(valid_results) + 1;
-        cols = ceil(sqrt(num_plots));
-        rows = ceil(num_plots / cols);
-        
-        % Ground Truth
-        subplot(rows, cols, 1);
-        surf(X, Y, ground_truth, 'EdgeColor', 'none');
-        title('Ground Truth', 'FontWeight', 'bold');
-        xlabel('X'); ylabel('Y'); zlabel('Z');
-        view(45, 30);
-        
-        % Các bề mặt kết quả
-        for i = 1:length(valid_results)
-            k = valid_results(i);
-            subplot(rows, cols, i+1);
-            surf(X, Y, varargin{k}, 'EdgeColor', 'none');
-            title(sprintf('Bề mặt %d\nRMSE: %.4f', k, rmse_values(k)), 'FontWeight', 'bold');
-            xlabel('X'); ylabel('Y'); zlabel('Z');
-            view(45, 30);
-        end
-        
-        sgtitle('So sánh Trực quan Tất cả Bề mặt', 'FontSize', 14, 'FontWeight', 'bold');
-    end
-    
-    % In bảng tóm tắt chi tiết
-    fprintf('\n=== BẢNG TÓM TẮT SAI SỐ BỀ MẶT 3D ===\n');
-    fprintf('%-12s | %-10s | %-10s | %-12s\n', 'Bề mặt', 'RMSE', 'MAE', 'Max Error');
-    fprintf('%-12s | %-10s | %-10s | %-12s\n', '----------', '--------', '--------', '----------');
-    for k = 1:num_results
-        if ~isnan(rmse_values(k))
-            fprintf('%-12s | %-10.6f | %-10.6f | %-12.6f\n', ...
-                    sprintf('Bề mặt %d', k), rmse_values(k), mae_values(k), max_error_values(k));
-        else
-            fprintf('%-12s | %-10s | %-10s | %-12s\n', ...
-                    sprintf('Bề mặt %d', k), 'Lỗi', 'Lỗi', 'Lỗi');
-        end
-    end
-    fprintf('\nKích thước bề mặt: [%d x %d] = %d điểm dữ liệu\n', m, n, m*n);
-    
-    % Tìm bề mặt tốt nhất
-    if ~isempty(valid_results)
-        [~, best_rmse_idx] = min(rmse_values(valid_results));
-        [~, best_mae_idx] = min(mae_values(valid_results));
-        
-        fprintf('\n=== ĐÁNH GIÁ ===\n');
-        fprintf('Bề mặt tốt nhất theo RMSE: Bề mặt %d (RMSE = %.6f)\n', ...
-                valid_results(best_rmse_idx), min(rmse_values(valid_results)));
-        fprintf('Bề mặt tốt nhất theo MAE: Bề mặt %d (MAE = %.6f)\n', ...
-                valid_results(best_mae_idx), min(mae_values(valid_results)));
-    end
-    fprintf('\n');
-end
-end
 
 %% them ngay 14/8/2025
 function im_unwrapped = goldstein_unwrap(phase_wrapped)
@@ -1671,5 +1455,165 @@ else
     figure_handle = [];
 end
 
+end
+
+%%
+function [wrappedPhase, params] = reconstruct_phase_auto(hologram, params)
+% Tái tạo pha từ hologram bằng cách lọc trong miền tần số với lựa chọn tự động.
+%
+% Chức năng sẽ tự động tìm phổ bậc +1 ở nửa trên của miền tần số,
+% tạo một bộ lọc (tròn hoặc HCN) và tiến hành tái tạo pha.
+%
+% Tham số (params) có thể chứa:
+% params.filter_type: 'circle' hoặc 'rectangle' (mặc định: 'circle')
+% params.filter_radius: Bán kính của bộ lọc tròn (mặc định: 40)
+% params.filter_width: Chiều rộng bộ lọc HCN (mặc định: 80)
+% params.filter_height: Chiều cao bộ lọc HCN (mặc định: 80)
+% params.dc_suppression_radius: Bán kính để loại bỏ thành phần DC (mặc định: 25)
+
+% --- Kiểm tra và đặt giá trị mặc định cho params ---
+if ~exist('params', 'var')
+    params = struct();
+end
+if ~isfield(params, 'filter_type')
+    params.filter_type = 'circle'; % 'circle' hoặc 'rectangle'
+end
+if ~isfield(params, 'filter_radius')
+    params.filter_radius = 50; % Bán kính của bộ lọc tròn
+end
+if ~isfield(params, 'filter_width')
+    params.filter_width = 100; % Chiều rộng bộ lọc HCN
+end
+if ~isfield(params, 'filter_height')
+    params.filter_height = 100; % Chiều cao bộ lọc HCN
+end
+if ~isfield(params, 'dc_suppression_radius')
+    params.dc_suppression_radius = 25; % Bán kính vùng trung tâm để loại bỏ
+end
+
+% --- Xử lý ban đầu ---
+hologramGray = myConvGrayScale(hologram);
+[numRows, numCols] = size(hologramGray);
+fourierTransform = fftshift(fft2(hologramGray));
+spectrumMagnitude = abs(fourierTransform);
+
+% --- Tự động tìm kiếm phổ bậc +1 ---
+
+% Tọa độ tâm của phổ
+u0 = floor(numCols / 2) + 1;
+v0 = floor(numRows / 2) + 1;
+
+% Tạo một bản sao của phổ cường độ để tìm kiếm
+searchSpectrum = spectrumMagnitude;
+
+% Loại bỏ thành phần DC (bậc 0) để tránh chọn nhầm
+[U, V] = meshgrid(1:numCols, 1:numRows);
+dist_from_center = sqrt((U - u0).^2 + (V - v0).^2);
+searchSpectrum(dist_from_center <= params.dc_suppression_radius) = 0;
+
+% Chỉ tìm kiếm ở nửa trên của phổ (nơi thường chứa phổ bậc +1)
+upperHalfSpectrum = searchSpectrum(1:v0-1, :);
+
+% Tìm tọa độ của điểm có cường độ lớn nhất
+[~, maxIdx] = max(upperHalfSpectrum(:));
+[v_max, u_max] = ind2sub(size(upperHalfSpectrum), maxIdx);
+% (v_max, u_max) là tọa độ của tâm vùng ROI được chọn tự động
+
+% --- Hiển thị phổ Fourier và vùng được chọn tự động ---
+figure('Name','Phổ Fourier và Vùng chọn tự động');
+imshow(log(1 + spectrumMagnitude), []);
+hold on;
+
+% Vẽ hình dạng bộ lọc tương ứng
+if strcmp(params.filter_type, 'circle')
+    theta = 0:0.01:2*pi;
+    x_circle = params.filter_radius * cos(theta) + u_max;
+    y_circle = params.filter_radius * sin(theta) + v_max;
+    plot(x_circle, y_circle, 'g', 'LineWidth', 2);
+    title(['Phổ bậc +1 (Tròn) tại (', num2str(u_max), ', ', num2str(v_max), ')']);
+else % rectangle
+    rect_x = u_max - params.filter_width/2;
+    rect_y = v_max - params.filter_height/2;
+    rectangle('Position', [rect_x, rect_y, params.filter_width, params.filter_height], ...
+        'EdgeColor', 'g', 'LineWidth', 2);
+    title(['Phổ bậc +1 (HCN) tại (', num2str(u_max), ', ', num2str(v_max), ')']);
+end
+hold off;
+
+% --- Tạo bộ lọc và trích xuất phổ ---
+
+% Tạo mask tương ứng với loại bộ lọc
+if strcmp(params.filter_type, 'circle')
+    % Bộ lọc hình tròn
+    roi_mask = sqrt((U - u_max).^2 + (V - v_max).^2) <= params.filter_radius;
+else
+    % Bộ lọc hình chữ nhật
+    roi_mask = (abs(U - u_max) <= params.filter_width/2) & ...
+        (abs(V - v_max) <= params.filter_height/2);
+end
+
+% Áp dụng mask để chỉ giữ lại phổ bậc +1
+filteredContent = fourierTransform .* roi_mask;
+
+% % Dịch chuyển vùng phổ đã chọn về lại tâm của ma trận
+% dich_chuyen = 0;
+% % Tính toán độ dịch chuyển cần thiết
+% v_shift = v0 - v_max;
+% u_shift = u0 - u_max - dich_chuyen;
+% 
+% % Dùng circshift để dịch chuyển
+% filteredSpectrum = circshift(filteredContent, [v_shift, u_shift]);
+
+filteredSpectrum = filteredContent;
+% --- Hiển thị kết quả phổ sau khi lọc và dịch chuyển ---
+figure('Name','Phổ sau khi xử lý');
+imshow(log(1 + abs(filteredSpectrum)), []);
+title(['Phổ bậc +1 (', params.filter_type, ') sau khi lọc và dịch về tâm']);
+
+% --- Tái tạo trường sóng phức và lấy pha ---
+finalPhaseComplex = ifft2(ifftshift(filteredSpectrum));
+
+% Lấy pha từ trường phức
+wrappedPhase = angle(finalPhaseComplex);
+end
+% -------------------------------------------------------------------------
+function output = myConvGrayScale(inputImage)
+% Chuyển ảnh đầu vào sang ảnh grayscale kiểu double.
+if size(inputImage, 3) > 1
+    inputImage = rgb2gray(inputImage);
+end
+output = double(inputImage);
+end
+
+function varargout = process_phases(fx, fy, M, N, varargin)
+    % Hàm xử lý nhiều pha: chuẩn hóa + bỏ tilt + căn chỉnh offset
+    % -----------------------------------------------------------
+    % fx, fy    : tần số sóng mang
+    % M, N      : kích thước ảnh
+    % varargin  : danh sách các phase input (object_phase, unwraps, ...)
+    % varargout : danh sách phase output sau xử lý
+
+    % Tạo mặt phẳng tham chiếu
+    [X, Y] = meshgrid(1:N, 1:M);
+    plane_phase = 2*pi*(fx*X + fy*Y);
+    plane_phase = plane_phase - min(plane_phase(:));
+
+    % Khởi tạo cell để chứa kết quả
+    varargout = cell(1, length(varargin));
+
+    % Xử lý từng pha
+    for k = 1:length(varargin)
+        phase_in = varargin{k};
+
+        % B1: Chuẩn hóa pha về min = 0
+        phase_norm = phase_in - min(phase_in(:));
+
+        % B2: Trừ mặt phẳng + hiệu chỉnh offset
+        phase_out = phase_norm - plane_phase - ...
+                    (max(phase_norm(:)) - max(plane_phase(:)))/2;
+
+        % Ghi vào output
+        varargout{k} = phase_out;
+    end
 end
 
