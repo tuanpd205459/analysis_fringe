@@ -8,7 +8,7 @@ fprintf('--> Bước 1: Mô phỏng Hologram...\n');
 % --- Thiết lập thông số ---
 M = 512; % Kích thước ảnh (chiều cao)
 N = 512; % Kích thước ảnh (chiều rộng)
-snr = 20;
+snr = 25;
 fx = 40 / N; % Tần số sóng mang
 fy = -60 / M;
 
@@ -32,52 +32,12 @@ sigma = pi/5;
 noise_level = 0;
 noise = noise_level * randn(N, N) .* sigma;
 
-phase_type = "peaks"; 
 
+[X, Y] = meshgrid(linspace(-1,1,N), linspace(-1,1,M));
+object_phase_without_noise = 2 * peaks(3*X, 3*Y);
 
-fprintf('Đang tạo đối tượng pha loại: %s với kích thước M=%d, N=%d\n', phase_type, M, N);
-
-switch lower(phase_type)
-    case 'peaks'
-
-        [X, Y] = meshgrid(linspace(-1,1,N), linspace(-1,1,M));
-        object_phase_without_noise = 2 * peaks(3*X, 3*Y);
-        
-    case 'microsphere_array'
-        gridSize = 3;   % 3x3 = 9 đỉnh
-        A = 10;         % biên độ Gaussian
-        sigma = 30;     % độ rộng Gaussian
-        % Khởi tạo ma trận pha
-        object_phase = zeros(M, N);
-
-        % Hệ trục pixel
-        [X, Y] = meshgrid(1:N, 1:M);
-
-        % Tính khoảng cách giữa các microsphere
-        spacingX = N / (gridSize + 1);
-        spacingY = M / (gridSize + 1);
-
-        % Vòng lặp tạo microsphere
-        for row = 1:gridSize
-            for col = 1:gridSize
-                centerX = col * spacingX;
-                centerY = row * spacingY;
-
-                % Gaussian tại vị trí (centerX, centerY)
-                gaussian = A * exp(- ((X - centerX).^2 + (Y - centerY).^2) / (2*sigma^2));
-
-                % Cộng dồn vào bề mặt
-                object_phase = object_phase + gaussian;
-            end
-    
-        end
-    otherwise
-        error('Loại pha chưa được định nghĩa!');
-end
 
 %%
-fprintf('Đang tạo đối tượng pha loại: %s với kích thước M=%d, N=%d\n', phase_type, M, N);
-
 % Thêm nhiễu vào pha đối tượng
 object_phase = awgn(object_phase_without_noise, snr, 'measured', 'db');
 figure;
@@ -87,7 +47,7 @@ title("doi tuong co nhieu- groundtruth");
 figure;
 surf(object_phase_without_noise, "EdgeColor", "none");
 colorbar;
-title(['Đối tượng pha (không nhiễu): ', strrep(phase_type, '_', ' ')]);
+title('Đối tượng pha (không nhiễu): ');
 
 % 3. TẠO HOLOGRAM
 fprintf('--> Bước 2: Tạo Hologram...\n');
@@ -207,8 +167,8 @@ fprintf('--> Bước 4: Giải bọc pha và tinh chỉnh kết quả...\n');
 
 %% 10. Refine artifacts points
 
-[finalUnwrappedPhase, ~, ~] = correct_sparse_artifacts_iterative(finalUnwrappedPhase, ...
-    'BoundaryCondition', 'symmetric', 'BoundaryWidth', 2, 'MaxIterations', 150);
+% [finalUnwrappedPhase, ~, ~] = correct_sparse_artifacts_iterative(finalUnwrappedPhase, ...
+%     'BoundaryCondition', 'symmetric', 'BoundaryWidth', 2, 'MaxIterations', 150);
 
 figure("Name","Kết quả sau refine");
 surf(finalUnwrappedPhase, 'EdgeColor', 'none');
@@ -217,7 +177,7 @@ xlabel('x'); ylabel('y'); zlabel('(rad)');
 colormap; colorbar; 
 
 % Cắt biên để hiển thị tốt hơn
-offset = 2;
+offset = 4;
 finalUnwrappedPhase = finalUnwrappedPhase(offset+1:end-offset, offset+1:end-offset);
 %% 11. CÁC THUẬT TOÁN UNWRAPPING KHÁC
 unwrapped_Phase_LS_DCT = unwrapping.unwrapPhase(wrapped_phase, 'ls', 'dct'); % LS với DCT
@@ -314,13 +274,6 @@ error_goldstein = unwrapped_Phase_goldstein - object_phase;
 error_proposal = unwrapped_Phase_proposal - object_phase;
 
 % Chuẩn hoá lỗi
-error_LS_DCT = error_LS_DCT-min(error_LS_DCT(:));
-error_TIE_FFT = error_TIE_FFT-min(error_TIE_FFT(:));
-error_noncontinue = error_noncontinue-min(error_noncontinue(:));
-error_2dweight = error_2dweight-min(error_2dweight(:));
-error_goldstein = error_goldstein - min(error_goldstein(:));
-error_proposal = error_proposal - min(error_proposal(:));
-
 
 %%
 % --- Tính sai số giữa object_phase và các bề mặt khác ---
@@ -328,7 +281,7 @@ phases = { unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, ...
           unwrapped_Phase_noncontinue, unwrapped_Phase_2dweight, ...
           unwrapped_Phase_goldstein, unwrapped_Phase_proposal};
 
-phase_names = {'phi\_est', 'LS-DCT', 'TIE-FFT', ...
+phase_names = {'LS-DCT', 'TIE-FFT', ...
                'Non-continue', '2D-weight', ...
                'Goldstein', 'Proposed'};
 
@@ -363,6 +316,28 @@ for k = 1:nPhase
         errors(k).Name, errors(k).RMSE, errors(k).MAE, errors(k).MAX);
 end
 
+% --- Hiển thị bản đồ sai số 2D ---
+% --- Hiển thị bản đồ sai số 2D + giá trị RMSE ---
+figure;
+for k = 1:nPhase
+    phase = phases{k};
+    
+    % B1: Loại bỏ offset
+    offset = median(phase(:)) - median(object_phase(:));
+    phase_adj = phase - offset;
+    
+    % B2: Sai số tuyệt đối từng điểm
+    error_map = abs(phase_adj - object_phase);
+
+    % B3: Vẽ
+    subplot(2, ceil(nPhase/2), k);
+    imagesc(error_map);
+    axis image; colorbar;
+    title(sprintf('%s\nRMSE = %g', errors(k).Name, errors(k).RMSE));
+end
+sgtitle('Bản đồ sai số tuyệt đối + RMSE');
+
+
 %% 8. HIỂN THỊ MẶT CẮT NGANG SAI SỐ
 fprintf('\nQuy trình đã hoàn thành!\n');
 
@@ -371,8 +346,8 @@ fprintf('\nQuy trình đã hoàn thành!\n');
 % -------------------------------------------------------------------------
 function [unwrappedPhase, kMap] = unwrapUsingEstimate(estimatedPhase, wrappedPhase)
     % Giải Wrapped pha `wrappedPhase` dựa trên pha ước lượng `estimatedPhase`.
-    wrappedEstimate = wrapToPi(estimatedPhase);
-    kMap = round((estimatedPhase - wrappedEstimate) / (2*pi));
+%     wrappedEstimate = wrapToPi(estimatedPhase);
+    kMap = round((estimatedPhase - wrappedPhase) / (2*pi));
     unwrappedPhase = wrappedPhase + 2*pi * kMap;
 end
 
