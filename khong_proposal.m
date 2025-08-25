@@ -8,7 +8,7 @@ fprintf('--> Bước 1: Mô phỏng Hologram...\n');
 % --- Thiết lập thông số ---
 M = 512; % Kích thước ảnh (chiều cao)
 N = 512; % Kích thước ảnh (chiều rộng)
-snr = 25;
+snr = 20;
 fx = 40 / N; % Tần số sóng mang
 fy = -60 / M;
 
@@ -67,14 +67,11 @@ carrier = 2 * pi * (fx * X + fy * Y);
 % --- Tạo hologram (ảnh giao thoa) theo công thức mới ---
 hologram = a + b .* cos(carrier + object_phase);
 
-% --- Thêm nhiễu Gaussian trắng ---
-hologram_Gauss = awgn(hologram, snr, 'measured', 'dB');
 
 % --- Hiển thị Hologram ---
 figure;
-imshow(hologram_Gauss, []);
+imshow(hologram, []);
 title('Ảnh Hologram (Giao thoa) có nhiễu');
-hologram = hologram_Gauss;
 %% 3. Tạo bề mặt interferogram
 
 % --- Tạo hologram từ pha gốc ---
@@ -133,6 +130,10 @@ skeleton_image = xoa_ria(skeleton_image);
 % Tái tạo bề mặt từ vân
 [phi_est, ~] = reconSurface_linearPushed(img, labels, 632.8e-9, 'None', false);
 
+% Sau khi có phi_est
+systematic_error = (pi/5) * (2*rand(size(phi_est))-1); % random ±λ/20
+phi_est = phi_est + systematic_error;
+
 phi_est = phi_est - min(phi_est(:));
 
 [X, Y] = meshgrid(1:N, 1:M);
@@ -140,7 +141,14 @@ plane_phase = 2*pi*(fx*X + fy*Y);
 plane_phase = plane_phase - min(plane_phase(:));
 phi_est = phi_est - plane_phase - (max(phi_est(:)- max(plane_phase(:))))/2;
 
+figure;
+surf(phi_est,"EdgeColor","none");
+title("Anh pha phi estimate co nhieu");
 
+figure;
+imagesc(phi_est - object_phase_without_noise);
+title("Anh sai lech giua phi est va ground truth");
+colorbar;
 %% 8. GIẢI BỌC PHA VÀ TINH CHỈNH
 fprintf('--> Bước 4: Giải bọc pha và tinh chỉnh kết quả...\n');
 % --- Giải bọc pha sử dụng pha ước lượng ---
@@ -206,7 +214,7 @@ unwrapped_Phase_proposal = finalUnwrappedPhase;
 
 figure;
 titles = {'Object phase (GT)', 'LS+DCT', 'TIE+FFT', ...
-          'Noncontinue (Linh)', '2D Weighted', 'Goldstein', 'Proposal'};
+          'Noncontinue', '2D Weighted', 'Goldstein', 'Proposal'};
 
 phases = {object_phase, unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, ...
           unwrapped_Phase_noncontinue, unwrapped_Phase_2dweight, ...
