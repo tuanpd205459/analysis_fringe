@@ -454,8 +454,8 @@ figure; imshow(BW); title('Skeleton gốc');
 hold on; plot(col, row, 'ro', 'MarkerSize', 10, 'LineWidth', 2);
 
 %% Nối tiếp
-minLen   = 50;   % ngưỡng chiều dài vân
-probeLen = 10;   % độ dài đoạn line giả định
+minLen   = 30;   % ngưỡng chiều dài vân
+probeLen = 20;   % độ dài đoạn line giả định
 
 BW_new = BW;
 
@@ -486,7 +486,7 @@ for i = 1:size(vectors,1)
     probeLine = drawLine(false(size(BW)), cx, cy, x2, y2);
 
     % kiểm tra xem line có giao vân nào khác không
-    overlap = probeLine & BW_skel;
+    overlap = probeLine & BW;
     overlap(cy, cx) = 0; % loại endpoint gốc
     if any(overlap(:))
         % nếu có giao, nối endpoint tới điểm giao đầu tiên
