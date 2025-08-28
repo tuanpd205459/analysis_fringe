@@ -662,6 +662,33 @@ try
 
     fprintf('Ngưỡng Otsu: %.4f\n', thresh);
     fprintf('Số pixel foreground: %d\n', sum(BW_Original(:)));
+%     % --- Làm sạch nhiễu nhỏ ---
+%     BW_clean = bwareaopen(BW_Original, 50);
+% 
+%     % =====================================================================
+%     % CASE 1: Watershed thô
+%     D1 = -bwdist(~BW_clean);
+%     L1 = watershed(D1);
+%     BW_ws1 = BW_clean;
+%     BW_ws1(L1==0) = 0;
+% 
+%     % =====================================================================
+%     % CASE 2: Marker-controlled Watershed
+%     D2 = -bwdist(~BW_clean);
+% 
+%     % Tìm các cực tiểu "thật" (độ sâu >= h)
+%     h = 3;   % chỉnh độ nhạy
+%     mask = imextendedmin(D2, h);
+% 
+%     % Ép D2 chỉ có minima tại mask
+%     D2_mod = imimposemin(D2, mask);
+%     L2 = watershed(D2_mod);
+% 
+%     BW_ws2 = BW_clean;
+%     BW_ws2(L2==0) = 0;
+% 
+% 
+%     BW_Original = BW_ws2;   % Skeleton hóa sau watershed có kiểm soát
 
     % --- Bước 2: Skeletonize bằng Zhang-Suen ---
     fprintf('Bước 2/3: Áp dụng thuật toán Zhang-Suen...\n');
@@ -762,6 +789,22 @@ try
     % --- Trả về kết quả ---
     skeleton_image = BW_Thinned;
     binary_image = BW_Original;
+
+
+
+
+    % Tìm các điểm rẽ nhánh trong bộ xương
+    branch_points = bwmorph(skeleton_image, 'branchpoints',12);
+
+    % Hiển thị ảnh bộ xương và các điểm rẽ nhánh
+    figure;
+    subplot(1,2,1);
+    imshow(skeleton_image);
+    title('Bộ xương');
+
+    subplot(1,2,2);
+    imshow(branch_points);
+    title('Các điểm rẽ nhánh');
 
     % Thống kê cuối cùng
     fprintf('\n=== THỐNG KÊ KẾT QUẢ ===\n');
