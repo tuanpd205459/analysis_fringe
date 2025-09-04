@@ -150,7 +150,6 @@ switch lower(phase_type)
         % mặt phẳng tham chiếu
         % Áp dụng trực tiếp phương trình của bạn lên toàn bộ lưới tọa độ
         [X, Y] = meshgrid(linspace(-1, 1, N), linspace(-1, 1, M));
-
         phase_offset = 2 * pi * (fx *X + fy * Y);
 
     case 'sharp_peak'

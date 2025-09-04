@@ -11,8 +11,6 @@ fprintf('--> Bước 1: Mô phỏng Hologram...\n');
 M = 512; % Kích thước ảnh (chiều cao)
 N = 512; % Kích thước ảnh (chiều rộng)
 snr = 15;
-fx = 40 / N; % Tần số sóng mang
-fy = -60 / M;
 
 auto_fft = 0;
 
@@ -199,9 +197,10 @@ skeleton_image = BW_Thinned;
 binary_image = BW_Original;
 
 skeleton = skeleton_image;
-
-%%
+%% Modified ZS (MZS) thinning
 BW =skeleton;
+save("BW.mat","BW");
+
 fprintf('Running Modified ZS (MZS) thinning...\n');
 S = MZS_thinning(BW);
 
@@ -250,271 +249,173 @@ BW = BW_clean;
 
 
 %% 4. ƯỚC LƯỢNG VECTOR HƯỚNG TẠI ENDPOINTS (theo component 30 pixel)
-n = 2;
-for count =1:n 
+n = 6;
+for count =1:n
     % Timf endPoint
     % Kernel để đếm số hàng xóm (8-neighbors)
-kernel = ones(3,3);
-kernel(2,2) = 0;
-neighborCount = conv2(double(BW), kernel, 'same');
+    endPoints = findEndpoints(BW);
 
-% Endpoint: pixel skeleton có đúng 1 hàng xóm
-endPoints = (BW == 1) & (neighborCount == 1);
+    figure; imshow(BW); title('Skeleton gốc');
 
-% Không xét biên
-endPoints(1:3,:)   = 0;
-endPoints(end-3:end,:) = 0;
-endPoints(:,1:3)   = 0;
-endPoints(:,end-3:end) = 0;
+    [row, col] = find(endPoints);
+    hold on; plot(col, row, 'ro', 'MarkerSize', 10, 'LineWidth', 2);
+    %
+    fprintf('--> Bước 2b: Ước lượng vector hướng theo đoạn liên thông\n');
+    vectors = fitEndpointVectors(BW, endPoints, 30);
 
-
-figure; imshow(BW); title('Skeleton gốc');
-
-[row, col] = find(endPoints);
-hold on; plot(col, row, 'ro', 'MarkerSize', 10, 'LineWidth', 2);
-%
-fprintf('--> Bước 2b: Ước lượng vector hướng theo đoạn liên thông\n');
-
-Nfit = 30; % số pixel để fit
-[y_idx, x_idx] = find(endPoints);  % toạ độ endpoint
-
-% Tìm các component trong mask hợp lệ
-CC = bwconncomp(BW, 8);
-
-vectors = [];
-
-for k = 1:length(x_idx)
-    cx = x_idx(k); cy = y_idx(k);
-
-    % Kiểm tra endpoint thuộc component nào
-    comp_id = 0;
-    for c = 1:CC.NumObjects
-        if ismember(sub2ind(size(BW), cy, cx), CC.PixelIdxList{c})
-            comp_id = c; break;
-        end
+    imshow(BW); hold on;
+    for i = 1:size(vectors,1)
+        cx = vectors(i,1);
+        cy = vectors(i,2);
+        vx = vectors(i,3);
+        vy = vectors(i,4);
+        quiver(cx, cy, 10*vx, 10*vy, 'r', 'LineWidth',2, 'MaxHeadSize',2);
     end
+    title('Vector hướng tại các endpoint');
     
-    if comp_id == 0, continue; end  % endpoint không thuộc component nào
-
-    % Lấy toạ độ tất cả điểm trong component
-    [yy, xx] = ind2sub(size(BW), CC.PixelIdxList{comp_id});
-    
-    % Tính khoảng cách từ endpoint
-    dist2 = (xx - cx).^2 + (yy - cy).^2;
-    [~, idx] = sort(dist2);
-    idxN = idx(1:min(Nfit, numel(idx)));
-
-    X = xx(idxN); 
-    Y = yy(idxN);
-
-    if numel(X) > 1
-        % --- Fit hướng bằng PCA ---
-        Xc = X - mean(X);
-        Yc = Y - mean(Y);
-        D = [Xc(:) Yc(:)];
-        [~,~,V] = svd(D,'econ');
-        v = V(:,1);  % vector chính (cột đầu tiên)
-        v = v / norm(v);
-
-        % --- Xác định hướng "ra ngoài" ---
-        centroid = [mean(X); mean(Y)];
-        c = centroid - [cx; cy];  % vector từ endpoint đến trong component
-        if dot(v, c) > 0
-            v = -v; % đảo dấu để hướng ra ngoài
-        end
-    else
-        v = [0;0];
+    %%
+    fprintf('--> Bước 2c: Nối các endpoint theo vector hướng\n');
+    if count == 1 %nối vân dài + góc lệch nhỏ + khoảng cách nhỏ
+        fprintf('--> lan chay dau tien\n');
+        minCompSize = 12;   % chỉ nối nếu component đủ dài
+        maxDist     = 6;   % khoảng cách tối đa giữa 2 endpoint
+        vecAlignThr = cosd(15);  % = 0.866 ~ hướng lệch <= 30°
     end
-
-    vectors = [vectors; cx cy v(1) v(2)];
-end
-
-% --- hiển thị kết quả ---
-figure; imshow(BW,[]); hold on;
-quiver(vectors(:,1), vectors(:,2), 15*vectors(:,3), 15*vectors(:,4), ...
-       0, 'g','LineWidth',0.5,'MaxHeadSize',0.5);
-title('Vectors hướng tại endpoints (ra ngoài)');
-
-% 
-% % Hiển thị kết quả
-% figure; imshow(BW,[]); hold on;
-% plot(x_idx, y_idx,'ro','MarkerSize',6,'LineWidth',1.5); % endpoint
-% quiver(vectors(:,1), vectors(:,2), 10*vectors(:,3), 10*vectors(:,4), ...
-%        'y','LineWidth',1.5); % vector hướng
-% title('Endpoint (đỏ) với vector hướng nội suy từ 30 pixel trong component');
-
-%%
-fprintf('--> Bước 2c: Nối các endpoint theo vector hướng\n');
-if count == 1 %nối vân dài + góc lệch nhỏ + khoảng cách nhỏ
-    fprintf('--> lan chay dau tien\n');
-    minCompSize = 12;   % chỉ nối nếu component đủ dài
-    maxDist     = 6;   % khoảng cách tối đa giữa 2 endpoint
-    vecAlignThr = cosd(15);  % = 0.866 ~ hướng lệch <= 30°
-end
-if count ==2 % Nối vân dài + góc lệch lớn + khoảng cách lớn
+    if count ==2 % Nối vân dài + góc lệch lớn + khoảng cách lớn
         fprintf('--> Bước 2d: Nối các endpoint theo vector hướng\n');
         fprintf('--> lan chay lan 2\n');
 
         minCompSize = 12;   % chỉ nối nếu component đủ dài
         maxDist     = 12;   % khoảng cách tối đa giữa 2 endpoint
         vecAlignThr = cosd(15);  % = 0.866 ~ hướng lệch <= 30°
-end
-if count == 3 % Nối vân ngắn + góc lệch nhỏ
-            fprintf('--> Bước 2d: Nối các endpoint theo vector hướng\n');
-            fprintf('--> lan chay lan 3\n');
-
-            minCompSize = 12;   % chỉ nối nếu component đủ dài
-            maxDist     = 25;   % khoảng cách tối đa giữa 2 endpoint
-            vecAlignThr = cosd(15);  % = 0.866 ~ hướng lệch <= 30°
-end
-if count == 4 % Nối vân ngắn + góc lệch lớn
-            fprintf('--> Bước 2d: Nối các endpoint theo vector hướng\n');
-            fprintf('--> lan chay lan 4\n');
-
-            minCompSize = 5;   % chỉ nối nếu component đủ dài
-            maxDist     = 20;   % khoảng cách tối đa giữa 2 endpoint
-            vecAlignThr = cosd(15);  % = 0.866 ~ hướng lệch <= 30°
-end
-
-BW_new = BW; % copy để cập nhật nối
-
-% --- Lặp qua các cặp endpoint ---
-for i = 1:size(vectors,1)-1
-    cx1 = vectors(i,1); cy1 = vectors(i,2);
-    v1  = [vectors(i,3), vectors(i,4)];
-    
-    % kiểm tra component của endpoint i
-    comp_id1 = 0;
-    for c = 1:CC.NumObjects
-        if ismember(sub2ind(size(BW), cy1, cx1), CC.PixelIdxList{c})
-            comp_id1 = c; break;
-        end
     end
-    if comp_id1==0 || numel(CC.PixelIdxList{comp_id1}) < minCompSize
-        continue;
+    if count == 3 % Nối vân dài + góc lệch nhỏ + khoảng cách lớn hơn
+        fprintf('--> Bước 2d: Nối các endpoint theo vector hướng\n');
+        fprintf('--> lan chay lan 3\n');
+
+        minCompSize = 12;   % chỉ nối nếu component đủ dài
+        maxDist     = 25;   % khoảng cách tối đa giữa 2 endpoint
+        vecAlignThr = cosd(15);  % = 0.866 ~ hướng lệch <= 30°
     end
-    
-    for j = i+1:size(vectors,1)
-        cx2 = vectors(j,1); cy2 = vectors(j,2);
-        v2  = [vectors(j,3), vectors(j,4)];
+    if count == 4 % Nối vân ngắn + góc lệch lớn
+        fprintf('--> Bước 2d: Nối các endpoint theo vector hướng\n');
+        fprintf('--> lan chay lan 4\n');
 
-        % kiểm tra component j
-        comp_id2 = 0;
-        for c = 1:CC.NumObjects
-            if ismember(sub2ind(size(BW), cy2, cx2), CC.PixelIdxList{c})
-                comp_id2 = c; break;
-            end
-        end
-        if comp_id2==0 || numel(CC.PixelIdxList{comp_id2}) < minCompSize
-            continue;
-        end
-        
-        % --- kiểm tra khoảng cách ---
-        d = sqrt((cx1-cx2)^2 + (cy1-cy2)^2);
-        if d > maxDist, continue; end
-
-        % --- kiểm tra hướng đối nhau ---
-        dir12 = [cx2-cx1, cy2-cy1];
-        dir12 = dir12 / norm(dir12+eps);
-       if dot(v1, dir12) > vecAlignThr && dot(v2, -dir12) > vecAlignThr
-            % nối 2 điểm bằng line
-            BW_new = drawLine(BW_new, cx1, cy1, cx2, cy2);
-
-        end
+        minCompSize = 5;   % chỉ nối nếu component đủ dài
+        maxDist     = 20;   % khoảng cách tối đa giữa 2 endpoint
+        vecAlignThr = cosd(15);  % = 0.866 ~ hướng lệch <= 30°
     end
+    if count == 5 % Nối vân ngắn + góc lệch lớn
+        fprintf('--> Bước 2d: Nối các endpoint theo vector hướng\n');
+        fprintf('--> lan chay lan 5\n');
+
+        minCompSize = 20;   % chỉ nối nếu component đủ dài
+        maxDist     = 50;   % khoảng cách tối đa giữa 2 endpoint
+        vecAlignThr = cosd(15);  % = 0.866 ~ hướng lệch <= 30°
+    end
+    if count == 6 % Nối vân ngắn + góc lệch lớn
+        fprintf('--> Bước 2d: Nối các endpoint theo vector hướng\n');
+        fprintf('--> lan chay lan 6\n');
+
+        minCompSize = 20;   % chỉ nối nếu component đủ dài
+        maxDist     = 50;   % khoảng cách tối đa giữa 2 endpoint
+        vecAlignThr = cosd(30);  % = 0.866 ~ hướng lệch <= 30°
+    end
+    if count == 7 % Nối vân ngắn + góc lệch lớn
+        fprintf('--> Bước 2d: Nối các endpoint theo vector hướng\n');
+        fprintf('--> lan chay lan 7\n');
+
+        minCompSize = 20;   % chỉ nối nếu component đủ dài
+        maxDist     = 50;   % khoảng cách tối đa giữa 2 endpoint
+        vecAlignThr = cosd(30);  % = 0.866 ~ hướng lệch <= 30°
+    end
+    CC = bwconncomp(BW, 8);
+
+    [BW, linesConnected] = connectEndpoints(BW, vectors, CC, minCompSize, maxDist, vecAlignThr);
+% xoá vùng nhỏ lẻ
+    BW = removeSmallComponents(BW, 6);  % xoá vùng liên thông < 10 pixel
+
+    figure; imshow(BW); hold on;
+    for k = 1:numel(linesConnected)
+        lineXY = linesConnected{k};
+        plot(lineXY(:,1), lineXY(:,2), 'g-', 'LineWidth', 2);
+    end
+    title('Skeleton sau khi nối endpoint (màu xanh)');
+
 end
 
-% --- hiển thị ---
-figure; imshow(BW_new,[]); hold on;
-plot(vectors(:,1), vectors(:,2), 'ro');
-title(sprintf('Kết quả sau khi nối endpoints - lần thứ %d', count));
-% quiver(vectors(:,1), vectors(:,2), 15*vectors(:,3), 15*vectors(:,4), ...
-%        0, 'g','LineWidth',0.5,'MaxHeadSize',0.5);
-%% Tìm các endpoint mới
-BW = BW_new;
+%%
+% % Timf endPoint
+% % Kernel để đếm số hàng xóm (8-neighbors)
+% endPoints = findEndpoints(BW);
+% 
+% figure; imshow(BW); title('Skeleton gốc');
+% 
+% [row, col] = find(endPoints);
+% hold on; plot(col, row, 'ro', 'MarkerSize', 10, 'LineWidth', 2);
+% %
+% fprintf('--> Bước 2b: Ước lượng vector hướng theo đoạn liên thông\n');
+% vectors = fitEndpointCurves(BW, endPoints, 30);
+% 
+% % hiển thị skeleton
+% imshow(BW); hold on;
+% 
+% % hiển thị endpoint
+% plot(vectors(:,1), vectors(:,2), 'ro', 'MarkerSize', 6, 'LineWidth', 1.5);
+% 
+% % hiển thị tangent (hướng tiếp tuyến)
+% L = 20; % chiều dài đoạn hiển thị
+% for i = 1:size(vectors,1)
+%     cx = vectors(i,1);
+%     cy = vectors(i,2);
+%     vx = vectors(i,3);
+%     vy = vectors(i,4);
+%     
+%     % Vẽ đường tiếp tuyến (màu xanh)
+%     plot([cx, cx+L*vx], [cy, cy+L*vy], 'g-', 'LineWidth', 2);
+% end
+% 
+% title('Endpoint (đỏ) và vector tiếp tuyến (xanh)');
+% 
+
+
+%%
+
+
+
+
+
+
+
+
+
+figure;
+for count = 1:n
+    subplot(2,2,count);
+    imshow(BW,[]); hold on;
+    title(sprintf('Sau lần nối %d', count));
 end
 
-kernel = ones(3,3);
-kernel(2,2) = 0;
-neighborCount = conv2(double(BW), kernel, 'same');
-
-% Endpoint: pixel skeleton có đúng 1 hàng xóm
-endPoints = (BW == 1) & (neighborCount == 1);
-
-% Không xét biên
-endPoints(1:3,:)   = 0;
-endPoints(end-3:end,:) = 0;
-endPoints(:,1:3)   = 0;
-endPoints(:,end-3:end) = 0;
-
-
-figure; imshow(BW); title('Skeleton gốc');
-
-[row, col] = find(endPoints);
-hold on; plot(col, row, 'ro', 'MarkerSize', 10, 'LineWidth', 2);
-
-%% Nối tiếp
-minLen   = 30;   % ngưỡng chiều dài vân
-probeLen = 20;   % độ dài đoạn line giả định
-
-BW_new = BW;
-
-for i = 1:size(vectors,1)
-    cx = vectors(i,1); cy = vectors(i,2);
-    v  = [vectors(i,3), vectors(i,4)];
-
-    % tìm component chứa endpoint này
-    comp_id = 0;
-    for c = 1:CC.NumObjects
-        if ismember(sub2ind(size(BW), cy, cx), CC.PixelIdxList{c})
-            comp_id = c; break;
-        end
-    end
-    if comp_id==0 || numel(CC.PixelIdxList{comp_id}) < minLen
-        continue; % bỏ qua vân ngắn
-    end
-
-    % tạo điểm "giả định" cách endpoint 10 pixel theo hướng vector
-    x2 = round(cx + probeLen * v(1));
-    y2 = round(cy + probeLen * v(2));
-
-    % ép toạ độ nằm trong khung ảnh
-    x2 = max(1, min(size(BW,2), x2));
-    y2 = max(1, min(size(BW,1), y2));
-
-    % vẽ đoạn line 10 pixel
-    probeLine = drawLine(false(size(BW)), cx, cy, x2, y2);
-
-    % kiểm tra xem line có giao vân nào khác không
-    overlap = probeLine & BW;
-    overlap(cy, cx) = 0; % loại endpoint gốc
-    if any(overlap(:))
-        % nếu có giao, nối endpoint tới điểm giao đầu tiên
-        [ry, cx_] = find(overlap, 1, 'first');
-        BW_new = drawLine(BW_new, cx, cy, cx_, ry);
-    end
-end
-
-figure; imshow(BW_new,[]);
-title('Kết quả nối endpoint > 50 pixels bằng line giả định 10 px');
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+%% Nối tiếp bằng cách kéo dài vân
+drawline_count = 10;
+% for count = 1:drawline_count
+%     endPoints = findEndpoints(BW);
+%     CC = bwconncomp(BW,8);
+%     vectors = fitEndpointVectors(BW, endPoints, 30);
+% 
+%     % 4. Nối bằng hàm vừa viết
+%     [BW, linesDrawn] = connectEndpointsProbe(BW, vectors, CC, 20, 30);
+% 
+%     % 5. Hiển thị
+%     figure; imshow(BW,[]); hold on;
+%     plot(vectors(:,1), vectors(:,2), 'ro'); % endpoint
+%     for k = 1:numel(linesDrawn)
+%         pts = linesDrawn{k};
+%         plot(pts(:,1), pts(:,2), 'g-', 'LineWidth',2);
+%     end
+%     title(sprintf('Kết quả nối bằng DrawLine Probe lần thứ %d', count));
+% end
+%%
 
 
 
@@ -671,12 +572,19 @@ for i = 1:nPts
         xj = endpoints(j,2); yj = endpoints(j,1);
         vj = vectors(j,:);
 
-        % khoảng cách
+        % khoảng cách Euclidean
         dist = hypot(xi-xj, yi-yj);
 
-        % hướng có đối nhau không? (dot < 0)
+        % chỉ xét nếu gần nhau và hướng ngược
         if dist < maxDist && dot(vi,vj) < 0
-            if dist < best_dist
+            % ---- TÍNH KHOẢNG CÁCH VUÔNG GÓC ----
+            a = -vj(2);
+            b =  vj(1);
+            c =  vj(2)*xj - vj(1)*yj;
+            d_perp = abs(a*xi + b*yi + c) / sqrt(a^2 + b^2);
+
+            % chỉ chấp nhận nếu vuông góc < 5 px
+            if d_perp < 5 && dist < best_dist
                 best_dist = dist;
                 best_j = j;
             end
@@ -696,7 +604,6 @@ for i = 1:nPts
         used(best_j) = true;
     end
 end
-
 end
 
 %% ------------------
@@ -724,11 +631,14 @@ else
 end
 end
 
-function BW = drawLine(BW, x1, y1, x2, y2)
-    % Vẽ đoạn thẳng từ (x1,y1) -> (x2,y2) trên ảnh BW nhị phân
-    [rr, cc] = bresenham(y1, x1, y2, x2); 
-    idx = sub2ind(size(BW), rr, cc);
-    BW(idx) = 1;
+function [BW_out, linePixels] = drawLine(BW, x1, y1, x2, y2)
+    % Bresenham line
+    [cx, cy] = bresenham(x1, y1, x2, y2);
+    linePixels = [cx(:), cy(:)];
+    
+    BW_out = BW;
+    idx = sub2ind(size(BW), cy, cx);
+    BW_out(idx) = 1;
 end
 
 function [rr,cc] = bresenham(y1, x1, y2, x2)
@@ -763,4 +673,368 @@ function [rr,cc] = bresenham(y1, x1, y2, x2)
             err = err - 2*dx;
         end
     end
+end
+function endPoints = findEndpoints(BW)
+% findEndpoints - Tìm các điểm endpoint trên skeleton
+%
+% Cú pháp:
+%   endPoints = findEndpoints(BW)
+%
+% Input:
+%   BW - ảnh nhị phân (skeleton)
+%
+% Output:
+%   endPoints - ảnh nhị phân, 1 tại vị trí endpoint
+%
+% Đặc điểm:
+%   - Endpoint = pixel có đúng 1 hàng xóm trong 8 hướng
+%   - Loại bỏ endpoint nằm sát biên ảnh (3 pixel)
+
+    % Kernel để đếm số hàng xóm 8 hướng (bỏ tâm)
+    kernel = ones(3,3);
+    kernel(2,2) = 0;
+
+    % Đếm số hàng xóm
+    neighborCount = conv2(double(BW), kernel, 'same');
+
+    % Endpoint = pixel skeleton có đúng 1 hàng xóm
+    endPoints = (BW == 1) & (neighborCount == 1);
+
+    % Loại bỏ endpoint ở biên (3 pixel)
+    endPoints(1:3,:)       = 0;
+    endPoints(end-2:end,:) = 0;
+    endPoints(:,1:3)       = 0;
+    endPoints(:,end-2:end) = 0;
+end
+
+%%
+function vectors = fitEndpointVectors(BW, endPoints, Nfit)
+% fitEndpointVectors - Tính vector hướng tại endpoint của skeleton
+%
+% Cú pháp:
+%   vectors = fitEndpointVectors(BW, endPoints, Nfit)
+%
+% Input:
+%   BW        - ảnh nhị phân skeleton
+%   endPoints - ảnh nhị phân endpoint (1 tại endpoint)
+%   Nfit      - số pixel dùng để fit PCA (ví dụ: 30)
+%
+% Output:
+%   vectors - ma trận [N x 4], mỗi hàng:
+%             [cx cy vx vy]
+%             (cx, cy) = tọa độ endpoint
+%             (vx, vy) = vector đơn vị hướng ra ngoài
+
+    [y_idx, x_idx] = find(endPoints);  % tọa độ endpoints
+    CC = bwconncomp(BW, 8);           % tìm các component
+    vectors = [];
+
+    for k = 1:length(x_idx)
+        cx = x_idx(k); 
+        cy = y_idx(k);
+
+        % Kiểm tra endpoint thuộc component nào
+        comp_id = 0;
+        for c = 1:CC.NumObjects
+            if ismember(sub2ind(size(BW), cy, cx), CC.PixelIdxList{c})
+                comp_id = c; 
+                break;
+            end
+        end
+
+        if comp_id == 0, continue; end  % endpoint không thuộc component nào
+
+        % Lấy tọa độ tất cả pixel trong component
+        [yy, xx] = ind2sub(size(BW), CC.PixelIdxList{comp_id});
+
+        % Tính khoảng cách từ endpoint
+        dist2 = (xx - cx).^2 + (yy - cy).^2;
+        [~, idx] = sort(dist2);
+        idxN = idx(1:min(Nfit, numel(idx)));
+
+        X = xx(idxN); 
+        Y = yy(idxN);
+
+        if numel(X) > 1
+            % --- Fit hướng bằng PCA ---
+            Xc = X - mean(X);
+            Yc = Y - mean(Y);
+            D = [Xc(:) Yc(:)];
+            [~,~,V] = svd(D,'econ');
+            v = V(:,1);  % vector chính (cột đầu tiên)
+            v = v / norm(v);
+
+            % --- Xác định hướng "ra ngoài" ---
+            centroid = [mean(X); mean(Y)];
+            c = centroid - [cx; cy];  % vector từ endpoint vào trong component
+            if dot(v, c) > 0
+                v = -v; % đảo dấu để hướng ra ngoài
+            end
+        else
+            v = [0;0];
+        end
+
+        vectors = [vectors; cx cy v(1) v(2)];
+    end
+end
+
+function [BW_new, linesConnected] = connectEndpoints(BW, vectors, CC, minCompSize, maxDist, vecAlignThr)
+% BW           : skeleton binary
+% vectors      : [cx cy vx vy] từ hàm computeEndpointVectors
+% CC           : bwconncomp(BW,8)
+% minCompSize  : kích thước tối thiểu của vân
+% maxDist      : khoảng cách tối đa cho phép nối
+% vecAlignThr  : ngưỡng cos(angle) hướng (ví dụ 0.7 ~ >45°)
+
+BW_new = BW; % copy để cập nhật nối
+linesConnected = {}; % cell lưu danh sách các đoạn đã nối
+
+for i = 1:size(vectors,1)-1
+    cx1 = vectors(i,1); cy1 = vectors(i,2);
+    v1  = [vectors(i,3), vectors(i,4)];
+    
+    % kiểm tra component của endpoint i
+    comp_id1 = findComponent(CC, [cy1,cx1]);
+    if comp_id1==0 || numel(CC.PixelIdxList{comp_id1}) < minCompSize
+        continue;
+    end
+    
+    for j = i+1:size(vectors,1)
+        cx2 = vectors(j,1); cy2 = vectors(j,2);
+        v2  = [vectors(j,3), vectors(j,4)];
+
+        % kiểm tra component j
+        comp_id2 = findComponent(CC, [cy2,cx2]);
+        if comp_id2==0 || numel(CC.PixelIdxList{comp_id2}) < minCompSize
+            continue;
+        end
+        
+        % --- khoảng cách Euclidean giữa 2 endpoint ---
+        d = hypot(cx1-cx2, cy1-cy2);
+        if d > maxDist, continue; end
+
+        % --- kiểm tra hướng vector (cùng hướng nối) ---
+        dir12 = [cx2-cx1, cy2-cy1];
+        dir12 = dir12 / (norm(dir12)+eps);
+
+        cond1 = dot(v1, dir12) > vecAlignThr;    % v1 hướng về P2
+        cond2 = dot(v2, -dir12) > vecAlignThr;   % v2 hướng về P1
+
+        if ~(cond1 && cond2), continue; end
+
+        % --- kiểm tra thêm khoảng cách vuông góc ---
+        % đường thẳng qua P2 với vector v2
+        a = -v2(2);
+        b =  v2(1);
+        c =  v2(2)*cx2 - v2(1)*cy2;
+        d_perp = abs(a*cx1 + b*cy1 + c) / sqrt(a^2 + b^2);
+
+        if d_perp > 5, continue; end
+
+        % --- nối 2 endpoint ---
+        [BW_new, linePixels] = drawLine(BW_new, cx1, cy1, cx2, cy2);
+        linesConnected{end+1} = linePixels; %#ok<AGROW>
+    end
+end
+end
+
+
+%% Hàm phụ: tìm component chứa 1 pixel
+function comp_id = findComponent(CC, p)
+% p = [row, col]
+comp_id = 0;
+idx = sub2ind(CC.ImageSize, p(1), p(2));
+for c = 1:CC.NumObjects
+    if ismember(idx, CC.PixelIdxList{c})
+        comp_id = c;
+        return;
+    end
+end
+end
+
+
+
+function [BW_new, linesDrawn] = connectEndpointsProbe(BW, vectors, CC, minLen, probeLen)
+%CONNECTENDPOINTSPROBE Nối các endpoint skeleton bằng đoạn thăm dò
+% 
+% [BW_new, linesDrawn] = connectEndpointsProbe(BW, vectors, CC, minLen, probeLen)
+%
+% INPUT:
+%   BW        - ảnh nhị phân skeleton (logical)
+%   vectors   - ma trận [x y vx vy] các endpoint và vector hướng
+%   CC        - cấu trúc từ bwconncomp(BW,8)
+%   minLen    - ngưỡng chiều dài vân tối thiểu được xét
+%   probeLen  - độ dài đoạn line thăm dò (pixel)
+%
+% OUTPUT:
+%   BW_new     - ảnh sau khi nối
+%   linesDrawn - cell array chứa các đoạn line đã vẽ, 
+%                mỗi phần tử = [x1 y1; x2 y2]
+
+    BW_new = BW;
+    linesDrawn = {}; 
+
+    for i = 1:size(vectors,1)
+        cx = vectors(i,1); 
+        cy = vectors(i,2);
+        v  = [vectors(i,3), vectors(i,4)];
+
+        % tìm component chứa endpoint
+        comp_id = 0;
+        for c = 1:CC.NumObjects
+            if ismember(sub2ind(size(BW), cy, cx), CC.PixelIdxList{c})
+                comp_id = c; 
+                break;
+            end
+        end
+        if comp_id==0 || numel(CC.PixelIdxList{comp_id}) < minLen
+            continue; % bỏ qua vân ngắn
+        end
+
+        % tạo điểm probe theo hướng vector
+        x2 = round(cx + probeLen * v(1));
+        y2 = round(cy + probeLen * v(2));
+
+        % ép trong ảnh
+        x2 = max(1, min(size(BW,2), x2));
+        y2 = max(1, min(size(BW,1), y2));
+
+        % vẽ đoạn probe
+        probeLine = drawLine(false(size(BW)), cx, cy, x2, y2);
+
+        % kiểm tra giao vân khác
+        overlap = probeLine & BW;
+        overlap(cy, cx) = 0; 
+        if any(overlap(:))
+            % lấy điểm giao đầu tiên
+            [ry, cx_] = find(overlap, 1, 'first');
+            BW_new = drawLine(BW_new, cx, cy, cx_, ry);
+
+            % lưu line
+            linesDrawn{end+1} = [cx cy; cx_ ry];
+        end
+    end
+end
+
+function vectors = fitEndpointCurves(BW, endPoints, Nfit)
+% Tính vector tiếp tuyến cong tại endpoint của skeleton
+% dùng spline fitting
+
+    [y_idx, x_idx] = find(endPoints);  
+    CC = bwconncomp(BW, 8);           
+    vectors = [];
+
+    for k = 1:length(x_idx)
+        cx = x_idx(k); 
+        cy = y_idx(k);
+
+        % Tìm component chứa endpoint
+        comp_id = 0;
+        for c = 1:CC.NumObjects
+            if ismember(sub2ind(size(BW), cy, cx), CC.PixelIdxList{c})
+                comp_id = c; 
+                break;
+            end
+        end
+        if comp_id == 0, continue; end
+
+        % Tìm đường đi (tracing) từ endpoint ra Nfit pixel
+        path = traceSkeleton(BW, [cy,cx], Nfit);
+
+        if size(path,1) < 3
+            v = [0 0];
+        else
+            % Fit spline qua các điểm
+            t = 1:size(path,1);
+            ppX = spline(t, path(:,2)); % x theo t
+            ppY = spline(t, path(:,1)); % y theo t
+
+            % Lấy đạo hàm tại điểm đầu (t=1)
+            dx = ppval(fnder(ppX,1),1);
+            dy = ppval(fnder(ppY,1),1);
+
+            v = [dx dy];
+            v = v / norm(v+eps);
+        end
+
+        vectors = [vectors; cx cy v(1) v(2)];
+    end
+end
+
+function path = traceSkeleton(BW, startPt, Nmax)
+% traceSkeleton - lần theo skeleton từ một endpoint
+%
+% Input:
+%   BW      : ảnh nhị phân skeleton
+%   startPt : [row, col] = điểm bắt đầu (endpoint)
+%   Nmax    : số pixel tối đa cần lấy
+%
+% Output:
+%   path    : [N x 2] = [row col] của đường đi
+
+    % Khởi tạo
+    path = startPt;
+    visited = false(size(BW));
+    visited(startPt(1), startPt(2)) = true;
+
+    % Điểm hiện tại
+    cur = startPt;
+
+    for k = 2:Nmax
+        % Lấy láng giềng 8 hướng
+        [rr, cc] = ndgrid(cur(1)-1:cur(1)+1, cur(2)-1:cur(2)+1);
+        rr = rr(:); cc = cc(:);
+
+        % Giữ các điểm nằm trong ảnh
+        valid = rr>=1 & rr<=size(BW,1) & cc>=1 & cc<=size(BW,2);
+        rr = rr(valid); cc = cc(valid);
+
+        % Lấy các neighbor thuộc skeleton chưa đi qua
+        neigh = [rr cc];
+        idx = sub2ind(size(BW), rr, cc);
+        mask = BW(idx) & ~visited(idx);
+
+        if ~any(mask)
+            break; % hết đường để đi
+        end
+
+        % Nếu có nhiều nhánh -> chọn một (ở skeleton thật thì chỉ có 1 hoặc 2)
+        rr = rr(mask);
+        cc = cc(mask);
+
+        % Chọn pixel gần nhất (thông thường chỉ 1)
+        d2 = (rr-cur(1)).^2 + (cc-cur(2)).^2;
+        [~,imin] = min(d2);
+
+        nxt = [rr(imin), cc(imin)];
+
+        % Thêm vào path
+        path = [path; nxt]; %#ok<AGROW>
+        visited(nxt(1),nxt(2)) = true;
+        cur = nxt;
+    end
+end
+function d = pointToVectorDistance(M, P, v)
+% POINTTOVECTORDISTANCE Khoảng cách từ điểm M đến đường thẳng
+% qua P và có vector hướng v
+%
+% INPUT:
+%   M = [x0, y0] : endpoint cần đo
+%   P = [x1, y1] : endpoint sinh ra vector
+%   v = [u, v]   : vector hướng tại P
+%
+% OUTPUT:
+%   d : khoảng cách vuông góc từ M đến đường thẳng
+
+    x0 = M(1); y0 = M(2);
+    x1 = P(1); y1 = P(2);
+    u = v(1);  w = v(2);
+
+    % hệ số phương trình đường thẳng
+    a = -w;
+    b = u;
+    c = w*x1 - u*y1;
+
+    % khoảng cách từ M đến đường thẳng
+    d = abs(a*x0 + b*y0 + c) / sqrt(a^2 + b^2);
 end

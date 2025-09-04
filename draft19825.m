@@ -1,171 +1,240 @@
-clc; clear; close all;
+clear;clc;close all;
+%% 1. Thiết lập mặt phẳng lấy mẫu
+M = 512; % Chiều cao
+N = 512; % Chiều rộng
+p = 6; 
+f0 = 1 /p; % Tần số sóng mang
+a = 100; % Biên độ pha (biên độ nền)
+b = 100; % Biên độ của sóng hình sin
+x=-M/2:M/2-1;  
+y=-N/2:N/2-1;
+[X,Y] = meshgrid(x,y); % Tạo lưới tọa độ 2D
 
-%% ===== 1) TẠO BỀ MẶT & SKELETON TỪ PEAKS =====
-M = 200; 
-[Xg, Yg, Ztrue] = peaks(M);
-Ztrue = Ztrue - min(Ztrue(:));
-lambda = 1; 
-step = lambda/2;
+%% 2. Tạo đối tượng (dạng hình hộp chữ nhật)
+rect_width = 120; % Chiều rộng hình hộp
+rect_height = 120; % Chiều cao hình hộp
+object = rectpuls(X,rect_width).*rectpuls(Y,rect_height); % Tạo đối tượng hình hộp chữ nhật
+Object = object +1 ;
+% object = object*5;
+% figure,imagesc(object),axis equal,axis off;
+% object = 2*peaks(512); % Tùy chọn, tạo đối tượng 'peaks'
+figure,imagesc(object),axis equal,axis off; % Hiển thị đối tượng
 
-% Contour mức cách nhau lambda/2 -> coi như tâm vân
-levels = 0:step:max(Ztrue(:));
-C = contourc(Ztrue, levels);
+%% 3. Tạo ảnh vân giao thoa (interferogram)
+snr = 25; % Tỷ lệ tín hiệu trên nhiễu (Signal-to-Noise Ratio)
+I_r = a + b*cos(2* pi* f0* X); % Ảnh vân tham chiếu (không có đối tượng)
+I_o = a + b*cos(2* pi* f0* X + object); % Ảnh vân mục tiêu (có đối tượng)
 
-BW = false(M,M);
-k = 1;
-while k < size(C,2)
-    lvl   = C(1,k);
-    npt   = C(2,k);
-    pts   = C(:,k+1:k+npt).';
-    xy    = round(pts);                          % dùng pixel index
-    xy(xy<1)=1; xy(xy>M)=M;
-    BW(sub2ind([M M], xy(:,2), xy(:,1))) = true; % (row=y, col=x)
-    k = k + npt + 1;
-end
-S = bwmorph(BW,'skel',Inf);
-S = bwmorph(S,'spur',8);
-S = bwareaopen(S,10);
+%% 4. Thêm nhiễu Gaussian trắng vào ảnh vân mục tiêu
+I_O_Gauss = awgn(I_o,snr,'measured','dB');% Thêm nhiễu Gaussian trắng
+figure;imshow(I_O_Gauss,[]);
+title('Ảnh vân giao thoa có nhiễu');
 
-%% ===== 2) GÁN NHÃN VÂN & GIÁ TRỊ λ/2 =====
-cc = bwconncomp(S);
-L = labelmatrix(cc);
-num = max(L(:));
-if num < 2, error('Cần >=2 đường vân.'); end
+%% 5. Phân tích phổ
+I_O = I_O_Gauss(:,:,1);
+I_R = I_r(:,:,1);
+[value_x,value_y] = size(I_O);
+I_O=im2double(I_O);
+I_R=im2double(I_R);
+I_fft_O=fftshift(fft2(I_O)); % Biến đổi Fourier 2D của ảnh vân mục tiêu
+I_fft_R=fftshift(fft2(I_R)); % Biến đổi Fourier 2D của ảnh vân tham chiếu
+% figure,imshow(log(1+abs(I_fft_O)),[]); title("Phổ vân mục tiêu"); % Hiển thị phổ của ảnh vân mục tiêu
+% figure,imshow(log(1+abs(I_fft_R)),[]); title("Phổ vân tham chiếu");% Hiển thị phổ của ảnh vân tham chiếu
+% figure,plot(abs(I_fft_O(value_x/2+1,:))); title("plot vân mục tiêu");
+% figure,plot(abs(I_fft_R(value_x/2+1,:)));title("plot vân tham chiếu");
+[maxvalue,zuobiao]=max(abs(I_fft_O(value_x/2+1,1:value_y/2-10))); % Tìm vị trí đỉnh phổ
 
-% Sắp thứ tự vân bằng PCA (ổn định với uốn cong)
-stats = regionprops(L,'Centroid','PixelList');
-P = vertcat(stats.PixelList);
-P = double(P) - mean(double(P),1);
-[U,~,~] = pca(P);
-nperp = [-U(2,1); U(1,1)];
-proj = arrayfun(@(s) dot((s.Centroid.'-mean(double(P)).'), nperp), stats);
-[~,ord] = sort(proj,'ascend');
-k_order = zeros(num,1);
-for r=1:num, k_order(ord(r)) = r-1; end
-z_line = k_order * step;                     % mỗi vân cách nhau λ/2
+%% 6. Tạo bộ lọc Gauss
+% Bộ lọc hình tròn (commented out)
+% W = 20;
+% Z = value_x/2-zuobiao;
+% circle=(X-Z).^2+Y.^2;   % Tính khoảng cách từ mỗi điểm đến tâm
+% H=ones(M,N); 
+% H(find(circle >= W*W))=0;  % Đặt giá trị ngoài bán kính về 0
+% figure,mesh(H);
 
-%% ===== 3) BFS VORONOI: VÂN GẦN NHẤT TOÀN ẢNH =====
-% Dùng hàng đợi Java để BFS đa nguồn
-[Mh, Nw] = size(S);
-nearestLabel = zeros(Mh,Nw,'uint16');          % nhãn vân gần nhất
-dist1 = inf(Mh,Nw);                            % khoảng cách tới vân gần nhất
-
-Q = java.util.ArrayDeque();
-
-% seed từ tất cả điểm skeleton
-[yx, xx] = find(S);
-for t=1:numel(xx)
-    i = yx(t); j = xx(t);
-    nearestLabel(i,j) = uint16(L(i,j));
-    dist1(i,j) = 0;
-    Q.add([i j]);
-end
-
-% 4-neighborhood
-NBR = [0 1; 1 0; 0 -1; -1 0];
-
-% BFS đa nguồn
-while ~Q.isEmpty()
-    p = Q.remove();
-    i = p(1); j = p(2);
-    for n=1:4
-        ii = i + NBR(n,1);
-        jj = j + NBR(n,2);
-        if ii>=1 && ii<=Mh && jj>=1 && jj<=Nw
-            dnew = dist1(i,j) + 1; % Manhattan; đủ tốt cho Voronoi rời rạc
-            if dnew < dist1(ii,jj)
-                dist1(ii,jj) = dnew;
-                nearestLabel(ii,jj) = nearestLabel(i,j);
-                Q.add([ii jj]);
-            end
-        end
+% Bộ lọc Gaussian
+W = 23; % Bán kính của bộ lọc
+m=value_x/2;
+n = zuobiao;
+H = zeros(value_x,value_y);
+for i=1:value_x
+    for j=1:value_y
+        D=sqrt((i-m)^2+(j-n)^2); % Khoảng cách từ điểm (i,j) đến tâm bộ lọc
+        H(i,j)=exp(-1/2*D^2/W^2); % Giá trị của bộ lọc Gauss
     end
 end
 
-%% ===== 4) TÌM VÂN THỨ NHÌ + RAMP λ/2 (ổn định ở mép dải) =====
-% Để lấy vân thứ nhì khác nhãn: tính lại EDT khi bỏ từng nhãn (đơn giản & rõ ràng)
-SkelLabelImg = zeros(Mh,Nw,'uint16'); SkelLabelImg(S) = uint16(L(S));
-[D1, idx1] = bwdist(S, 'euclidean');        % khoảng cách tới skeleton gần nhất (chuẩn hơn dist1)
-lab1 = SkelLabelImg(idx1);                  % nhãn vân gần nhất theo EDT
+%% 7. Lọc dải thông và tách tần số cơ bản
+jipin_O = I_fft_O.*H; % Lọc ảnh vân mục tiêu
+jipin_R = I_fft_R.*H; % Lọc ảnh vân tham chiếu
+jipin_ifft_O=ifft2(ifftshift(jipin_O)); % Biến đổi Fourier ngược
+jipin_ifft_R=ifft2(ifftshift(jipin_R));
+jipin_ifft_R= -conj(jipin_ifft_R); % Lấy liên hợp phức và đảo dấu
+jipin_ifft = jipin_ifft_R.*jipin_ifft_O; % Nhân phức để lấy pha
 
-Z_ramp = nan(Mh,Nw);
-D2_all = inf(Mh,Nw); lab2_all = zeros(Mh,Nw,'uint16');
+% 1. Hiển thị phổ gốc
+figure;
+subplot(2,3,1); imagesc(log(1+abs(I_fft_O))); colormap gray; axis image;
+title('Phổ FFT của O');
 
-for a = 1:num
-    Sa = S; Sa(L==a) = false;
-    if ~any(Sa(:)), continue; end
-    [D2, idx2] = bwdist(Sa,'euclidean');
-    tmpLab = zeros(Mh,Nw,'uint16'); tmpLab(Sa) = uint16(L(Sa));
-    lab2 = tmpLab(idx2);
+subplot(2,3,2); imagesc(log(1+abs(I_fft_R))); colormap gray; axis image;
+title('Phổ FFT của R');
 
-    mask = (lab1==a) & (lab2>0);
-    d1 = D1(mask); d2 = D2(mask);
+% 2. Hiển thị bộ lọc Gaussian H
+subplot(2,3,3); imagesc(H); colormap jet; colorbar; axis image;
+title('Bộ lọc Gaussian H');
 
-    v1 = z_line(a) * ones(nnz(mask),1);
-    v2 = z_line(double(lab2(mask)));           % giá trị vân thứ nhì
+% 3. Phổ sau khi lọc
+subplot(2,3,4); imagesc(log(1+abs(jipin_O))); colormap gray; axis image;
+title('Phổ O sau khi lọc');
 
-    % tham số t nội suy theo khoảng cách: đi từ v1 -> v2
-    t = d1 ./ (d1 + d2 + eps);
-    Z_ramp(mask) = (1 - t).*v1 + t.*v2;        % đảm bảo λ/2 giữa 2 vân
-    % Lưu lại d2, lab2 cho pha trộn sau
-    D2_all(mask) = d2;
-    lab2_all(mask) = lab2(mask);
+subplot(2,3,5); imagesc(log(1+abs(jipin_R))); colormap gray; axis image;
+title('Phổ R sau khi lọc');
+
+% 4. Ảnh sau IFFT
+subplot(2,3,6); imagesc(real(jipin_ifft_O)); colormap gray; axis image;
+title('Ảnh O sau ifft');
+
+
+%% 8. Mở gói pha (unwrapping)
+% unph = -atan2(imag(jipin_ifft),real(jipin_ifft)); % Pha gói (wrapped phase)
+unph = -angle(jipin_ifft);
+
+figure,imagesc(unph),axis equal,axis off; % Hiển thị pha gói
+title('Pha đã được gói');
+figure, surf(unph,"EdgeColor","none"), title("Anh wrapped ");
+colorbar;
+
+
+% 1) Pha & biên độ
+C = jipin_ifft;
+amp = abs(C);
+phi_wrapped = angle(C);
+
+figure; 
+subplot(2,2,1); imagesc(amp); axis image; colorbar; title('Amplitude');
+subplot(2,2,2); imagesc(phi_wrapped); axis image; colorbar; title('Wrapped phase');
+
+% 2) Histogram pha để thấy phân bố
+subplot(2,2,3); histogram(phi_wrapped(:),200); title('Histogram of wrapped phase');
+
+% 3) Kiểm tra vùng có amplitude nhỏ
+subplot(2,2,4);
+th = 0.12 * max(amp(:)); % thử thay 0.12 thành 0.05/0.2 để so sánh
+imshow(amp > th); title(['Mask: amp > ' num2str(th)]);
+
+%% 9. Thuật toán Least-Square (Bình phương tối thiểu)
+dx = psf2otf_test([-1,1;0,0],[value_x,value_y]); % Toán tử vi phân x
+dy = psf2otf_test([-1,0;1,0],[value_x,value_y]); % Toán tử vi phân y
+DTD = abs(dx).^2 + abs(dy).^2;
+dadx = real(ifft2(fft2(unph).*dx)); % Gradient x của pha gói
+dady = real(ifft2(fft2(unph).*dy)); % Gradient y của pha gói
+dadx_G = dadx-pi*round(dadx/pi); % Loại bỏ bước nhảy 2*pi từ gradient
+dady_G = dady-pi*round(dady/pi);
+ph_L2 = real(ifft2((fft2(dadx_G).*conj(dx)+fft2(dady_G).*conj(dy))./(DTD + eps))); % Phục hồi pha
+nmse_L2 = NMSE(object,im2gray(ph_L2)); % Tính NMSE (Sai số bình phương trung bình chuẩn hóa)
+disp(nmse_L2);
+
+%% 10. Thuật toán Total Variation (Tổng biến thiên)
+ph_TV = unph; % Khởi tạo pha TV
+% Thông số khởi tạo TV
+lambda_L1 = 0.001;
+lambda0_L1 = 2*lambda_L1;
+lambda_max_L1 = 1e5;
+while lambda0_L1 < lambda_max_L1
+    gx = real(ifft2(fft2(ph_TV).*dx));
+    gy = real(ifft2(fft2(ph_TV).*dy));
+    gx_L = sign(gx) .* max(abs(gx) - lambda_L1/lambda0_L1,0);
+    gy_L = sign(gy) .* max(abs(gy) - lambda_L1/lambda0_L1,0);
+    Gx = fft2(gx_L).*conj(dx);
+    Gy = fft2(gy_L).*conj(dy);
+    fenzi = fft2(dadx_G).*conj(dx)+fft2(dady_G).*conj(dy)  + lambda0_L1*(Gx+Gy);
+    fenmu = (1 + lambda0_L1)*DTD+eps;
+    ph_TV = real(ifft2(fenzi./fenmu)); 
+    lambda0_L1 = lambda0_L1 * 2;
 end
+nmse_TV = NMSE(object,im2gray(ph_TV));
+disp(nmse_TV);
 
-% Điểm không có vân thứ nhì (rìa ngoài): gán theo vân gần nhất
-remain = isnan(Z_ramp);
-if any(remain(:))
-    Z_ramp(remain) = z_line(double(lab1(remain)));
+%% 11. Thuật toán Dark Sparse Prior
+ph_SP= unph; % Khởi tạo pha SP
+% Thông số L0
+lambda = 0.00001;
+lambda_max = 1e5;
+lambda_L0 = 2*lambda;
+while lambda_L0 < lambda_max
+    Q = ph_SP.*(abs(ph_SP).^2 > lambda/lambda_L0);
+    % Thông số L1
+    beta = 0.001;
+    beta_L1 = 2*beta;
+    beta_max = 1e5;
+    while beta_L1 < beta_max
+        gx = real(ifft2(fft2(ph_SP).*dx));
+        gy = real(ifft2(fft2(ph_SP).*dy));
+        gx_L1 = sign(gx) .* max(abs(gx) - beta/beta_L1,0);
+        gy_L1 = sign(gy) .* max(abs(gy) - beta/beta_L1,0);
+        Gx = fft2(gx_L1).*conj(dx);
+        Gy = fft2(gy_L1).*conj(dy);
+        
+        fenzi = fft2(dadx_G).*conj(dx)+fft2(dady_G).*conj(dy) + lambda_L0*fft2(Q) + beta_L1*(Gx+Gy);
+        fenmu = lambda_L0+(1+  beta_L1)*DTD;
+        ph_SP = real(ifft2(fenzi./(fenmu+eps)));
+        beta_L1 = beta_L1*2;
+    end
+    lambda_L0 = lambda_L0 * 2;
 end
+nmse_SP = NMSE(object,im2gray(ph_SP));
+disp(nmse_SP);
 
-%% ===== 5) SCATTEREDINTERPOLANT TOÀN CỤC (mượt) =====
-[y_s, x_s] = find(S);
-z_s = z_line(double(L(S)));     % giá trị z tại skeleton
-F = scatteredInterpolant(double(x_s), double(y_s), double(z_s), 'natural', 'nearest');
-[Xq, Yq] = meshgrid(1:Nw,1:Mh);
-Z_scat = F(Xq, Yq);
+%% 12. Hiển thị kết quả pha
+figure,imagesc(ph_L2);axis off;axis equal;
+title('Pha mở gói bằng LS');
+figure,imagesc(ph_TV);axis off;axis equal;
+title('Pha mở gói bằng TV');
+figure,imagesc(ph_SP);axis off;axis equal;
+title('Pha mở gói bằng SP');
+figure,surf(ph_L2,"EdgeColor","none");
+title('Pha mở gói bằng LS');
+figure,surf(ph_TV, "EdgeColor","none");
+title('Pha mở gói bằng TV');
+figure,surf(ph_SP, "EdgeColor","none");
+title('Pha mở gói bằng SP');
 
-%% ===== 6) PHA TRỘN THÔNG MINH: NEAR-EDGE ưu tiên RAMP, MID-BAND ưu tiên SCAT =====
-% Thước đo "ở giữa dải": tau = |d1 - d2| / (d1 + d2)
-hasSecond = lab2_all > 0;
-tau = ones(Mh,Nw);                                  % biên mặc định 1 (ưu tiên ramp)
-tau(hasSecond) = abs(D1(hasSecond) - D2_all(hasSecond)) ./ ...
-                 (D1(hasSecond) + D2_all(hasSecond) + eps);
-% Ở giữa dải: tau ~ 0; ở sát vân: tau ~ 1
-w = 1 - tau;                                        % trọng số cho SCAT (giữa dải cao hơn)
-w = max(0,min(1,w));
-% Tuỳ chọn làm mượt trọng số một chút để không gắt:
-w = imgaussfilt(w, 1);
 
-Z_hybrid = (1 - w).*Z_ramp + w.*Z_scat;
+% figure,imagesc(object-ph_L2);axis off;axis equal; % Sai số LS
+% figure,imagesc(object-ph_TV);axis off;axis equal; % Sai số TV
+% figure,imagesc(object-ph_SP);axis off;axis equal; % Sai số SP
 
-%% ===== 7) HẬU XỬ LÝ NHẸ (bỏ tilt & offset, optional) =====
-Z_out = Z_hybrid;
-% Bỏ offset
-Z_out = Z_out - median(Z_out(:));
+%% 13. Biểu đồ mặt cắt ngang
+x = 1:1:value_x; 
+y = ph_L2(value_x/2,:); % Lấy mặt cắt giữa của pha LS
+figure
+plot(x,y,'r','linewidth',1.4);
+hold on
+y = ph_TV(value_x/2,:); % Lấy mặt cắt giữa của pha TV
+plot(x,y,'g','linewidth',1.4);
+hold on
+y = ph_SP(value_x/2,:); % Lấy mặt cắt giữa của pha SP
+plot(x,y,'b','linewidth',1.4);
+hold on
+y = object(value_x/2,:); % Lấy mặt cắt giữa của đối tượng gốc
+plot(x,y,'k','linewidth',1.4);
+ylabel('Pha (rad)');
+xlabel('Số điểm ảnh');
+xlim([0 512])
+ylim([-0.1 1.2])
+lgd = legend({'LS','TV','SPUP','GT'},'Location','northeast');
+set(lgd,'unit','centimeters','FontSize',14);
 
-%% ===== 8) SO SÁNH VỚI TRUE SURFACE (đã scale theo λ/2) =====
-% Đưa Ztrue về cùng "nấc" với hệ λ/2 (chỉ để trực quan; không bắt buộc)
-Zt = Ztrue; Zt = Zt - median(Zt(:));
-% Chuẩn hóa biên độ để so sánh tương đối (không thay đổi bản chất demo)
-scale = median(abs(Z_out(:))) / (median(abs(Zt(:))) + eps);
-Zt_scaled = Zt * scale;
+% NMSE.m
+function nmse = NMSE(original_image, reconstructed_image)
+    % Loại bỏ offset và chuẩn hóa các giá trị pha trước khi tính toán
+    original_image = original_image - mean(original_image(:));
+    reconstructed_image = reconstructed_image - mean(reconstructed_image(:));
 
-err_scat = Z_scat - Zt_scaled;
-err_ramp = Z_ramp - Zt_scaled;
-err_hyb  = Z_out  - Zt_scaled;
-
-%% ===== 9) HIỂN THỊ =====
-figure('Name','Hybrid BFS + ScatteredInterpolant'); 
-subplot(2,3,1); imagesc(Zt_scaled); axis image off; colorbar; title('True (scaled)');
-subplot(2,3,2); imshow(S); title('Skeleton');
-subplot(2,3,3); imagesc(Z_scat); axis image off; colorbar; title('ScatteredInterpolant');
-
-subplot(2,3,4); imagesc(Z_ramp); axis image off; colorbar; title('Ramp λ/2 (BFS/EDT-based)');
-subplot(2,3,5); imagesc(Z_out);  axis image off; colorbar; title('Hybrid = blend(ramp, scat)');
-subplot(2,3,6); imagesc(err_hyb); axis image off; colorbar; title(sprintf('Error Hybrid (RMSE=%.4f)', rms(err_hyb(:))));
-
-figure('Name','Errors');
-subplot(1,3,1); imagesc(err_scat); axis image off; colorbar; title(sprintf('Scattered err (RMSE=%.4f)', rms(err_scat(:))));
-subplot(1,3,2); imagesc(err_ramp); axis image off; colorbar; title(sprintf('Ramp err (RMSE=%.4f)',  rms(err_ramp(:))));
-subplot(1,3,3); imagesc(err_hyb);  axis image off; colorbar; title(sprintf('Hybrid err (RMSE=%.4f)', rms(err_hyb(:))));
+    % Tính toán sai số bình phương trung bình chuẩn hóa (NMSE)
+    mse = mean((original_image(:) - reconstructed_image(:)).^2);
+    original_energy = mean(original_image(:).^2);
+    nmse = mse / original_energy;
+end 
