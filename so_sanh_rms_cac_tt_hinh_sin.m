@@ -47,7 +47,7 @@ auto_fft = 0;
 [x, y] = meshgrid(1:N, 1:M);
 
 % --- Thông số sóng sin ---
-freq_x = 4;   % số chu kỳ theo trục x
+freq_x = 2;   % số chu kỳ theo trục x
 freq_y = 2;   % số chu kỳ theo trục y
 amp    = 10; % biên độ pha (rad)
 

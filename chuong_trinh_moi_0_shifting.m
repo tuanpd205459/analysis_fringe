@@ -438,13 +438,13 @@ unwrapped_Phase_2dweight = goldstein_unwrap(wrappedPhase);
 
   %% OfFset lại bề mặt bằng cách trừ đi mặt phẳng tham chiếu
   [unwrapped_Phase_LS_DCT, phi_plane] = remove_plane_manual(unwrapped_Phase_LS_DCT);
-phase_offset = phi_plane;
-%   unwrapped_Phase_LS_DCT = unwrapped_Phase_LS_DCT - phase_offset;
+  phase_offset = phi_plane;
+  %   unwrapped_Phase_LS_DCT = unwrapped_Phase_LS_DCT - phase_offset;
   unwrapped_Phase_TIE_FFT = unwrapped_Phase_TIE_FFT - phase_offset;
   unwrapped_Phase_noncontinue = unwrapped_Phase_noncontinue - phase_offset;
   unwrapped_Phase_2dweight = unwrapped_Phase_2dweight - phase_offset;
   finalUnwrappedPhase = finalUnwrappedPhase - phase_offset;
-% offset về 0
+  % offset về 0
   unwrapped_Phase_LS_DCT  =  unwrapped_Phase_LS_DCT- min(unwrapped_Phase_LS_DCT(:));
   unwrapped_Phase_TIE_FFT  =  unwrapped_Phase_TIE_FFT- min(unwrapped_Phase_TIE_FFT(:));
   unwrapped_Phase_noncontinue  =  unwrapped_Phase_noncontinue- min(unwrapped_Phase_noncontinue(:));

@@ -43,8 +43,8 @@ auto_fft = 0;
 [x, y] = meshgrid(1:N, 1:M);
 
 % --- Thông số sóng sin ---
-freq_x = 4;   % số chu kỳ theo trục x
-freq_y = 4;   % số chu kỳ theo trục y
+freq_x = 2;   % số chu kỳ theo trục x
+freq_y = 0;   % số chu kỳ theo trục y
 amp    = 10; % biên độ pha (rad)
 
 % --- Pha object dạng hình sin ---
@@ -319,7 +319,7 @@ for count = 1:nLoop
         maxDist     = 35;    % vòng sau cho phép nối xa hơn
         vecAlignThr = cosd(30);    % ~0.866
 
-        vectors = fitEndpointVectors(BW, endPoints, 10);
+        vectors = fitEndpointVectors(BW, endPoints, 5);
         max_perh = 5;
 
     end
@@ -333,7 +333,7 @@ for count = 1:nLoop
         vecAlignThr = cosd(35);    % ~0.866
         max_perh = 5;
 
-        vectors = fitEndpointVectors(BW, endPoints, 10);
+        vectors = fitEndpointVectors(BW, endPoints, 5);
     end
 
     if  count == 7
@@ -344,7 +344,7 @@ for count = 1:nLoop
         maxDist     = 50;    % vòng sau cho phép nối xa hơn
         vecAlignThr = cosd(50);    % ~0.866
 
-        vectors = fitEndpointVectors(BW, endPoints, 10);
+        vectors = fitEndpointVectors(BW, endPoints, 5);
         max_perh = 10;
 
     end
@@ -356,7 +356,7 @@ for count = 1:nLoop
         maxDist     = 100;    % vòng sau cho phép nối xa hơn
         vecAlignThr = cosd(50);    % ~0.866
 
-        vectors = fitEndpointVectors(BW, endPoints, 10);
+        vectors = fitEndpointVectors(BW, endPoints, 5);
         max_perh = 25;
     end
 
@@ -408,7 +408,7 @@ BW_NEW = BW;
 % --- Tìm endpoint ---
 endPoints = bwmorph(BW,'endpoints');
 
-vectors = fitEndpointVectors(BW, endPoints, 5);
+vectors = fitEndpointVectors(BW, endPoints, 10);
 
 margin = 15;
 extendLength = 15;
