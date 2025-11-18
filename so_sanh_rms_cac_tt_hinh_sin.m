@@ -4,8 +4,13 @@ clc; clear; close all;
 % --- Skeleton giả định (test) ---
 %% 1. KHỞI TẠO
 
-snr_values = 25:-1:13;   % [35 33 31 ... 13]
+% snr_values = 30:-1:15;   % [35 33 31 ... 13]
+snr_values = 35;   % [35 33 31 ... 13]
+
 % Mảng để lưu kết quả RMSE cho mỗi giá trị SNR
+% Tỉ lệ biên độ nhiễu / tín hiệu (%)
+noise_percent = 100 * 10.^(-snr_values/20);
+
 results_rmse = zeros(1, length(snr_values));
 % <<< --------------------------------------- >>>
 
@@ -20,18 +25,40 @@ nPhase = numel(phase_names);
 % --- Ma trận lưu kết quả RMSE (nPhase x nSNR) ---
 results_rmse_all = zeros(nPhase, nSNR);
 
-
-
 % <<< --- BẮT ĐẦU VÒNG LẶP CHÍNH --- >>>
 for idxSNR = 1:length(snr_values)
 
 %% 2. MÔ PHỎNG HOLOGRAM
-% fprintf('--> Bước 1: Mô phỏng Hologram...\n');
+clc; clear; close all;
+
+% --- Skeleton giả định (test) ---
+%% 1. KHỞI TẠO
+fprintf('Bắt đầu quy trình mô phỏng và tái tạo...\n');
+
+%% 2. MÔ PHỎNG HOLOGRAM
+fprintf('--> Bước 1: Mô phỏng Hologram...\n');
 % --- Thiết lập thông số ---
+% M = 512; % Kích thước ảnh (chiều cao)
+% N = 512; % Kích thước ảnh (chiều rộng)
+% snr = 13;
+% 
+% auto_fft = 0;
+% 
+% % 
+% % % nhiễu - phương sai: sigma
+% % sigma = pi/5;
+% % noise_level = 0;
+% % noise = noise_level * randn(N, N) .* sigma;
+% 
+% 
+% [X, Y] = meshgrid(linspace(-1,1,N), linspace(-1,1,M));
+% object_phase_without_noise = 2 * peaks(3*X, 3*Y);
+
+
+
 M = 512; % Kích thước ảnh (chiều cao)
 N = 512; % Kích thước ảnh (chiều rộng)
-% snr = 15;
-snr = snr_values(idxSNR);
+snr = 35;
 % fprintf('\n====================================================\n');
 fprintf('ĐANG CHẠY MÔ PHỎNG VỚI SNR = %.1f dB\n', snr);
 % fprintf('====================================================\n');
@@ -48,23 +75,33 @@ auto_fft = 0;
 
 % --- Thông số sóng sin ---
 freq_x = 2;   % số chu kỳ theo trục x
-freq_y = 2;   % số chu kỳ theo trục y
-amp    = 10; % biên độ pha (rad)
+freq_y = 0;   % số chu kỳ theo trục y
+amp    = 6; % biên độ pha (rad)
 
 % --- Pha object dạng hình sin ---
-object_phase_without_noise = amp * sin(2*pi*freq_x*x/N);
-
+% object_phase_without_noise  = amp * sin(2*pi*freq_x*x/N + 2*pi*freq_y*y/M);
+object_phase_without_noise  = amp *(x+ sin(2*pi*freq_x*x/N + 2*pi*freq_y*y/M));
 
 %%
 % Thêm nhiễu vào pha đối tượng
 object_phase = awgn(object_phase_without_noise, snr, 'measured', 'db');
+% figure;
+% surf(object_phase,"EdgeColor","none");
+% title("doi tuong co nhieu- groundtruth");
+
+% --- Hiển thị pha gốc (không nhiễu) ---
+
+% figure;
+% surf(object_phase_without_noise, "EdgeColor", "none");
+% colorbar;
+% title('Đối tượng pha (không nhiễu): ');
 
 % 3. TẠO HOLOGRAM
-% fprintf('--> Bước 2: Tạo Hologram...\n');
+fprintf('--> Bước 2: Tạo Hologram...\n');
 
 % --- Thiết lập thông số sóng mang ---
-fx = 40 / N; % Tần số sóng mang
-fy = -60 / M;
+fx = 20 / N; % Tần số sóng mang
+fy = -40 / M;
 [X, Y] = meshgrid(1:N, 1:M);
 
 % Cường độ nền và điều biến
@@ -77,10 +114,14 @@ carrier = 2 * pi * (fx * X + fy * Y);
 % --- Tạo hologram (ảnh giao thoa) theo công thức mới ---
 hologram = a + b .* cos(carrier + object_phase);
 
-% % --- Hiển thị Hologram ---
-% figure;
-% imshow(hologram, []);
-% title('Ảnh Hologram (Giao thoa) có nhiễu');
+% --- Biến đổi Fourier ---
+fft_hologram = fftshift(fft2(hologram));
+
+% --- Hiển thị biên độ phổ với log để nhìn rõ hơn ---
+figure;
+imshow(log(1 + abs(fft_hologram)), []);
+title('Ảnh Fourier Hologram (Giao thoa) có nhiễu');
+
 %% 3. Tạo bề mặt interferogram
 hologram = mat2gray(hologram);
 imwrite(hologram, 'hologram.bmp');
@@ -89,10 +130,10 @@ imwrite(hologram, 'hologram.bmp');
 hologram = imgaussfilt(hologram, 1);
 % hologram = medfilt2(hologram, [3 3]);
 % hologram = wiener2(hologram, [5 5]);
-% figure;
-% imshow(hologram);
-% colorbar;
-% title('hologram sau noise removal : ');
+figure;
+imshow(hologram);
+colorbar;
+title('hologram sau noise removal : ');
 %% 6. Histogram equalization
 % hologram = adapthisteq(hologram);
 % figure;
@@ -102,7 +143,7 @@ hologram = imgaussfilt(hologram, 1);
 
 input_image = hologram;
 %% 7. ƯỚC LƯỢNG PHA BẰNG PHƯƠNG PHÁP PHÂN TÍCH VÂN
-% fprintf('--> Bước 3: Ước lượng pha thô bằng phân tích vân...\n');
+fprintf('--> Bước 3: Ước lượng pha thô bằng phân tích vân...\n');
 % Làm mảnh và gán bậc vân
 % % Chuyển đổi sang ảnh xám nếu cần
 if size(input_image, 3) == 3
@@ -110,18 +151,18 @@ if size(input_image, 3) == 3
     fprintf('Đã chuyển đổi ảnh RGB sang grayscale\n');
 end
 
-%     fprintf('Bắt đầu quá trình skeletonization...\n');
+    fprintf('Bắt đầu quá trình skeletonization...\n');
 
     % --- Bước 1: Nhị phân hóa ảnh bằng Otsu ---
-%     fprintf('Bước 1/3: Nhị phân hóa ảnh bằng phương pháp Otsu...\n');
+    fprintf('Bước 1/3: Nhị phân hóa ảnh bằng phương pháp Otsu...\n');
     thresh = graythresh(input_image);
     BW_Original = imbinarize(input_image, thresh);
 
-%     fprintf('Ngưỡng Otsu: %.4f\n', thresh);
-%     fprintf('Số pixel foreground: %d\n', sum(BW_Original(:)));
+    fprintf('Ngưỡng Otsu: %.4f\n', thresh);
+    fprintf('Số pixel foreground: %d\n', sum(BW_Original(:)));
 
     % --- Bước 2: Skeletonize bằng Zhang-Suen ---
-%     fprintf('Bước 2/3: Áp dụng thuật toán Zhang-Suen...\n');
+    fprintf('Bước 2/3: Áp dụng thuật toán Zhang-Suen...\n');
     BW_Thinned = BW_Original;
     [rows, cols] = size(BW_Thinned);
     changing = true;
@@ -180,7 +221,7 @@ end
 
         % Hiển thị tiến trình mỗi 10 iterations
         if mod(iteration, 10) == 0
-%             fprintf('  Iteration %d: %d pixels còn lại\n', iteration, sum(BW_Thinned(:)));
+            fprintf('  Iteration %d: %d pixels còn lại\n', iteration, sum(BW_Thinned(:)));
         end
 
         % Tránh vòng lặp vô hạn
@@ -190,32 +231,57 @@ end
         end
     end
 
-% --- Trả về kết quả ---
-skeleton_image = BW_Thinned;
-binary_image = BW_Original;
+    fprintf('Hoàn thành sau %d iterations\n', iteration);
+    fprintf('Số pixel skeleton: %d\n', sum(BW_Thinned(:)));
+
+        fprintf('Bước 3/3: Hiển thị kết quả...\n');
+
+        figure('Name', 'Kết quả Skeletonization Zhang-Suen', 'NumberTitle', 'off');
+
+        % Hiển thị so sánh
+        subplot(1, 3, 1);
+        imshow(input_image);
+        title('Ảnh gốc', 'FontSize', 12);
+
+        subplot(1, 3, 2);
+        imshow(BW_Original);
+        title('Ảnh nhị phân (Otsu)', 'FontSize', 12);
+
+        subplot(1, 3, 3);
+        imshow(BW_Thinned);
+        title('Skeleton (Zhang-Suen)', 'FontSize', 12);
+
+        % Điều chỉnh layout
+        sgtitle('Quá trình Skeletonization', 'FontSize', 14, 'FontWeight', 'bold');
+    
+
+    % --- Trả về kết quả ---
+    skeleton_image = BW_Thinned;
+    binary_image = BW_Original;
 
 skeleton = skeleton_image;
 
 %%
 BW = skeleton;
-% fprintf('Running Modified ZS (MZS) thinning...\n');
+fprintf('Running Modified ZS (MZS) thinning...\n');
 S = MZS_thinning(BW);
 
-% figure;
-% subplot(1,2,1); imshow(BW); title('Input binary');
-% subplot(1,2,2); imshow(S);  title('Skeleton (MZS)');
+figure;
+subplot(1,2,1); imshow(BW); title('Input binary');
+subplot(1,2,2); imshow(S);  title('Skeleton (MZS)');
 
 BW = S;
+
 
 main_loop = 1;
 for count_main_loop = 1:main_loop
 %% Xoa vung nho le
-BW = removeSmallComponents(BW, 5);  % xoá vùng liên thông < 10 pixel
+BW = removeSmallComponents(BW, 10);  % xoá vùng liên thông < 10 pixel
 
 %% Xoá junction
 
 [BW, junctionMap] = removeJunctions(BW);
-BW = bwmorph(BW,"spur", 5);
+BW = bwmorph(BW,"spur", 2);
 
 % figure; imshow(BW); hold on;
 % [row, col] = find(junctionMap);
@@ -223,9 +289,9 @@ BW = bwmorph(BW,"spur", 5);
 % title('Skeleton sau khi xoá junction');
 %
 % % Xóa các đoạn ngắn (bridge)
-maxBridgeLen = 8;
+maxBridgeLen = 7;
 BW = bwareaopen(BW, maxBridgeLen);
-
+BW = BW(2:end-1, 2:end-1);
 %% --- 4. Nối endpoint theo vòng lặp thử ---
 nLoop = 8; % số vòng nối
 for count = 1:nLoop
@@ -236,7 +302,7 @@ for count = 1:nLoop
     endPoints(:,1) = 0;
     endPoints(:,end-1) = 0;
     if count == 1
-%         fprintf('--> Vòng nối %d\n', count);
+        fprintf('--> Vòng nối %d\n', count);
         % Tham số nối thử
         minCompSize = 15;
         maxDist     = 10;    % vòng sau cho phép nối xa hơn
@@ -246,7 +312,7 @@ for count = 1:nLoop
 
     end
     if  count == 2
-%         fprintf('--> Vòng nối %d ----\n', count);
+        fprintf('--> Vòng nối %d ----\n', count);
 
         % Tham số nối thử
         minCompSize = 12;
@@ -257,7 +323,7 @@ for count = 1:nLoop
 
     end
     if  count == 3
-%         fprintf('--> Vòng nối %d ----\n', count);
+        fprintf('--> Vòng nối %d ----\n', count);
 
         % Tham số nối thử
         minCompSize = 8;
@@ -270,7 +336,7 @@ for count = 1:nLoop
     end
 
     if  count == 4
-%         fprintf('--> Vòng nối %d ----\n', count);
+        fprintf('--> Vòng nối %d ----\n', count);
 
         % Tham số nối thử
         minCompSize = 5;
@@ -282,55 +348,98 @@ for count = 1:nLoop
 
     end
     if  count == 5
-%         fprintf('--> Vòng nối %d ----\n', count);
+        fprintf('--> Vòng nối %d ----\n', count);
 
         % Tham số nối thử
         minCompSize = 5;
         maxDist     = 35;    % vòng sau cho phép nối xa hơn
         vecAlignThr = cosd(30);    % ~0.866
 
-        vectors = fitEndpointVectors(BW, endPoints, 10);
+        vectors = fitEndpointVectors(BW, endPoints, 5);
         max_perh = 5;
+BW = bwareaopen(BW, 10);
 
     end
 
     if  count == 6
-%         fprintf('--> Vòng nối %d ----\n', count);
-
+        fprintf('--> Vòng nối %d ----\n', count);
         % Tham số nối thử
         minCompSize = 5;
         maxDist     = 40;    % vòng sau cho phép nối xa hơn
         vecAlignThr = cosd(35);    % ~0.866
         max_perh = 5;
 
-        vectors = fitEndpointVectors(BW, endPoints, 10);
+        vectors = fitEndpointVectors(BW, endPoints, 5);
+BW = bwareaopen(BW, 10);
+
     end
 
     if  count == 7
-%         fprintf('--> Vòng nối %d ----\n', count);
+        fprintf('--> Vòng nối %d ----\n', count);
 
         % Tham số nối thử
         minCompSize = 5;
         maxDist     = 50;    % vòng sau cho phép nối xa hơn
         vecAlignThr = cosd(50);    % ~0.866
 
-        vectors = fitEndpointVectors(BW, endPoints, 15);
+        vectors = fitEndpointVectors(BW, endPoints, 5);
         max_perh = 10;
-
+    BW = bwmorph(BW,"spur", 1);
+BW = bwareaopen(BW, 10);
     end
     if  count == 8
-%         fprintf('--> Vòng nối %d ----\n', count);
+        fprintf('--> Vòng nối %d ----\n', count);
 
         % Tham số nối thử
         minCompSize = 5;
         maxDist     = 100;    % vòng sau cho phép nối xa hơn
         vecAlignThr = cosd(50);    % ~0.866
 
-        vectors = fitEndpointVectors(BW, endPoints, 15);
+        vectors = fitEndpointVectors(BW, endPoints, 5);
         max_perh = 25;
+BW = bwareaopen(BW, 10);
+
     end
 
     [BW, linesConnected] = connectEndpoints_v3(BW, vectors, CC, minCompSize, maxDist, vecAlignThr, max_perh);
+
+    % Hiển thị skeleton sau vòng nối
+    figure;
+    imshow(BW); hold on;
+    if ~isempty(endPoints)
+        plot(endPoints(:,1), endPoints(:,2), 'ro', 'MarkerSize',8,'LineWidth',2);
+    end
+    title(sprintf('Skeleton sau vòng nối %d', count));
+
+
+    % Hiển thị các đường nối và vector tại endpoint
+    if ~isempty(linesConnected)
+        figure;
+        imshow(BW); hold on;
+
+        % --- Vẽ các đường nối ---
+        for k = 1:numel(linesConnected)
+            lineXY = linesConnected{k};  % [x y] pixel trên đoạn nối
+            plot(lineXY(:,1), lineXY(:,2), 'g-', 'LineWidth', 2);
+        end
+
+        % --- Vẽ endpoint và vector hướng ---
+        for i = 1:size(vectors,1)
+            cx = vectors(i,1);
+            cy = vectors(i,2);
+            vx = vectors(i,3);
+            vy = vectors(i,4);
+
+            % Vẽ điểm endpoint
+            plot(cx, cy, 'ro', 'MarkerFaceColor','r', 'MarkerSize',5);
+
+            % Vẽ vector hướng tại endpoint
+            quiver(cx, cy, 10*vx, 10*vy, 'r', 'LineWidth',2, 'MaxHeadSize',2);
+        end
+
+        % --- Tiêu đề ---
+        title(sprintf('Đường nối vòng %d (%d đường)', count, numel(linesConnected)));
+    end
 
 end
 BW_NEW = BW;
@@ -340,36 +449,36 @@ BW_NEW = BW;
 % --- Tìm endpoint ---
 endPoints = bwmorph(BW,'endpoints');
 
-vectors = fitEndpointVectors(BW, endPoints, 20);
+vectors = fitEndpointVectors(BW, endPoints, 10);
 
-margin = 20;
-extendLength = 20;
+margin = 15;
+extendLength = 15;
 % --- Tham số nối ---
 BW = extendLineNearBorder(BW, vectors, extendLength, margin);
-% 
-% figure; imshow(BW,[]);
-% hold on; plot(vectors(:,1), vectors(:,2),'ro')
-% title("Nối vân ở biên");
+
+figure; imshow(BW,[]);
+hold on; plot(vectors(:,1), vectors(:,2),'ro')
+title("Nối vân ở biên");
 
 
 end
 
-% save("after_estimate.mat");
 % Hoàn thành
+% --------
 
 skeleton_image = BW;
 
 wrapped_phase = wrapToPi(object_phase) ;
-% figure;
-% surf(wrapped_phase,"EdgeColor","none");
-% colorbar;
-% title('wrapped phase: ');
+figure;
+surf(wrapped_phase,"EdgeColor","none");
+colorbar;
+title('wrapped phase: ');
 
 %% 7. ƯỚC LƯỢNG PHA BẰNG PHƯƠNG PHÁP PHÂN TÍCH VÂN
-% fprintf('--> Bước 3: Ước lượng pha thô bằng phân tích vân...\n');
+fprintf('--> Bước 3: Ước lượng pha thô bằng phân tích vân...\n');
 % Làm mảnh và gán bậc vân
 
-[~, labels, img] = assign_fringe_order(skeleton_image, false);
+[~, labels, img] = assign_fringe_order(skeleton_image, true);
 
 % Tái tạo bề mặt từ vân
 [phi_est, ~] = reconSurface_linearPushed(img, labels, 632.8e-9, 'None', false);
@@ -382,30 +491,52 @@ phi_est = phi_est - min(phi_est(:));
 
 [X, Y] = meshgrid(1:N, 1:M);
 plane_phase = 2*pi*(fx*X + fy*Y);
+
 plane_phase = plane_phase - min(plane_phase(:));
+[phi_est, plane_phase, object_phase_without_noise,...
+    wrapped_phase] = crop_multiple_to_smallest(phi_est, plane_phase,...
+    object_phase_without_noise, wrapped_phase);
 phi_est = phi_est - plane_phase - (max(phi_est(:)- max(plane_phase(:))))/2;
 
-% figure;
-% surf(phi_est,"EdgeColor","none");
-% title("Anh pha phi estimate co nhieu");
+figure;
+surf(phi_est,"EdgeColor","none");
+title("Anh pha phi estimate co nhieu");
 
-% figure;
-% imagesc(phi_est - object_phase_without_noise);
-% title("Anh sai lech giua phi est va ground truth");
-% colorbar;
+figure;
+imagesc(phi_est - object_phase_without_noise);
+title("Anh sai lech giua phi est va ground truth");
+colorbar;
+
 %% 8. GIẢI BỌC PHA VÀ TINH CHỈNH
-% fprintf('--> Bước 4: Giải bọc pha và tinh chỉnh kết quả...\n');
+fprintf('--> Bước 4: Giải bọc pha và tinh chỉnh kết quả...\n');
 % --- Giải bọc pha sử dụng pha ước lượng ---
 % [est_phase_flat, wrapped_phase, object_phase] = crop_multiple_to_smallest(est_phase_flat, wrapped_phase, object_phase);
 
 [finalUnwrappedPhase, kMap] = unwrapUsingEstimate(phi_est, wrapped_phase);
+% [finalUnwrappedPhase, kMap] = unwrapUsingEstimate2(phi_est, wrapped_phase);
+
+% fprintf("chay k map");
+% kMap = kMap - min(kMap(:));
+% fprintf("ket thuc kmap");
+% figure();
+% surf(kMap, 'EdgeColor', 'none');
+% title("kMap");
+% xlabel('x'); ylabel('y'); zlabel('(rad)');
+% colormap; colorbar; 
+% off_set = 2;
+% % finalUnwrappedPhase = finalUnwrappedPhase(off_set:end-off_set,off_set:end-off_set );
+% figure("Name","Kết quả");
+% surf(finalUnwrappedPhase, 'EdgeColor', 'none');
+% title("Kết quả finalUnwrappedPhase");
+% xlabel('x'); ylabel('y'); zlabel('(rad)');
+% colormap; colorbar; 
 
 
 %% 10. Refine artifacts points
 
 % [finalUnwrappedPhase, ~, ~] = correct_sparse_artifacts_iterative(finalUnwrappedPhase, ...
 %     'BoundaryCondition', 'symmetric', 'BoundaryWidth', 2, 'MaxIterations', 150);
-
+% 
 % figure("Name","Kết quả sau refine");
 % surf(finalUnwrappedPhase, 'EdgeColor', 'none');
 % title("Kết quả finalUnwrappedPhase sau khi refine");
@@ -413,19 +544,19 @@ phi_est = phi_est - plane_phase - (max(phi_est(:)- max(plane_phase(:))))/2;
 % colormap; colorbar; 
 
 % Cắt biên để hiển thị tốt hơn
-offset = 4;
+offset = 10;
 finalUnwrappedPhase = finalUnwrappedPhase(offset+1:end-offset, offset+1:end-offset);
 %% 11. CÁC THUẬT TOÁN UNWRAPPING KHÁC
-% unwrapped_Phase_LS_DCT = unwrapping.unwrapPhase(wrapped_phase, 'ls', 'dct'); % LS với DCT
+unwrapped_Phase_LS_DCT = unwrapping.unwrapPhase(wrapped_phase, 'ls', 'dct'); % LS với DCT
 unwrapped_Phase_TIE_FFT = unwrapping.unwrapPhase(wrapped_phase, 'tie', 'fft'); % TIE với FFT
 unwrapped_Phase_noncontinue = unwrapping.unwrapPhase(wrapped_phase, 'linh'); % Phương pháp của a Linh
 unwrapped_Phase_2dweight = unwrapping.unwrapPhase(wrapped_phase, '2dweight'); % 2D weighted phase unwrapping
 unwrapped_Phase_goldstein = goldstein_unwrap(wrapped_phase);
-% Proposed method 
+% proposal 
 unwrapped_Phase_proposal = finalUnwrappedPhase;
-[object_phase, unwrapped_Phase_TIE_FFT, unwrapped_Phase_noncontinue,...
+[object_phase, unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, unwrapped_Phase_noncontinue,...
     unwrapped_Phase_2dweight, unwrapped_Phase_goldstein, unwrapped_Phase_proposal]...
-    = crop_multiple_to_smallest(object_phase, unwrapped_Phase_TIE_FFT, unwrapped_Phase_noncontinue,...
+    = crop_multiple_to_smallest(object_phase, unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, unwrapped_Phase_noncontinue,...
     unwrapped_Phase_2dweight, unwrapped_Phase_goldstein, unwrapped_Phase_proposal);
 [M,N] = size(object_phase);
 % [unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, ...
@@ -484,7 +615,7 @@ fprintf('\n==== TỔNG HỢP KẾT QUẢ RMSE ====\n');
 for k = nPhase:-1:1
     fprintf('\n%s:\n', phase_names{k});
     for idxSNR = 1:nSNR
-        fprintf('  SNR = %2d dB:  RMSE = %.4e\n', snr_values(idxSNR), results_rmse_all(k,idxSNR));
+        fprintf('  Nhiễu = %2d %:  RMSE = %.4e\n', noise_percent(idxSNR), results_rmse_all(k,idxSNR));
     end
 end
 
@@ -499,18 +630,18 @@ lineStyles = {'-','--','-.',':','-'};
 
 lineWidth_size = {1.5,1.5,1.5,1.5,1.5};
 for k = nPhase:-1:1
-    plot(snr_values, results_rmse_all(k,:), ...
+    plot(noise_percent, results_rmse_all(k,:), ...
         '-','LineWidth',lineWidth_size{k}, ...
         'Marker', markers{k}, ...
         'DisplayName', phase_names{k});
 end
 
-xlabel('SNR (dB)');
+xlabel('% nhiễu');
 ylabel('RMSE');
-title('So sánh RMSE của các thuật toán theo SNR');
-legend('Location','eastoutside'); % legend đưa ra ngoài cho thoáng
+title('So sánh RMSE của các thuật toán theo % nhiễu');
+legend('Location','eastoutside'); 
 set(gca,'YScale','log'); % log scale để phân biệt rõ
-set(gca,'FontSize',12);  % font to hơn để đọc dễ
+set(gca,'FontSize',12);  
 
 
 

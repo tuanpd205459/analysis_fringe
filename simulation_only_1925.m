@@ -45,12 +45,15 @@ auto_fft = 0;
 % --- Thông số sóng sin ---
 freq_x = 2;   % số chu kỳ theo trục x
 freq_y = 0;   % số chu kỳ theo trục y
-amp    = 10; % biên độ pha (rad)
+amp    = 6; % biên độ pha (rad)
+
 
 % --- Pha object dạng hình sin ---
-object_phase_without_noise  = amp * sin(2*pi*freq_x*x/N + 2*pi*freq_y*y/M);
+object_phase_without_noise  = amp * sin(2*pi*freq_x*x/N + 2*pi*freq_y*y/M) ;
 
 %%
+
+
 % Thêm nhiễu vào pha đối tượng
 object_phase = awgn(object_phase_without_noise, snr, 'measured', 'db');
 % figure;
@@ -68,7 +71,7 @@ object_phase = awgn(object_phase_without_noise, snr, 'measured', 'db');
 fprintf('--> Bước 2: Tạo Hologram...\n');
 
 % --- Thiết lập thông số sóng mang ---
-fx = 10 / N; % Tần số sóng mang
+fx = 20 / N; % Tần số sóng mang
 fy = -40 / M;
 [X, Y] = meshgrid(1:N, 1:M);
 
@@ -82,10 +85,14 @@ carrier = 2 * pi * (fx * X + fy * Y);
 % --- Tạo hologram (ảnh giao thoa) theo công thức mới ---
 hologram = a + b .* cos(carrier + object_phase);
 
-% --- Hiển thị Hologram ---
+% --- Biến đổi Fourier ---
+fft_hologram = fftshift(fft2(hologram));
+
+% --- Hiển thị biên độ phổ với log để nhìn rõ hơn ---
 figure;
-imshow(hologram, []);
-title('Ảnh Hologram (Giao thoa) có nhiễu');
+imshow(log(1 + abs(fft_hologram)), []);
+title('Ảnh Fourier Hologram (Giao thoa) có nhiễu');
+
 %% 3. Tạo bề mặt interferogram
 hologram = mat2gray(hologram);
 imwrite(hologram, 'hologram.bmp');
@@ -240,12 +247,12 @@ BW = S;
 main_loop = 1;
 for count_main_loop = 1:main_loop
 %% Xoa vung nho le
-BW = removeSmallComponents(BW, 5);  % xoá vùng liên thông < 10 pixel
+BW = removeSmallComponents(BW, 10);  % xoá vùng liên thông < 10 pixel
 
 %% Xoá junction
 
 [BW, junctionMap] = removeJunctions(BW);
-BW = bwmorph(BW,"spur", 3);
+BW = bwmorph(BW,"spur", 2);
 
 % figure; imshow(BW); hold on;
 % [row, col] = find(junctionMap);
@@ -253,7 +260,7 @@ BW = bwmorph(BW,"spur", 3);
 % title('Skeleton sau khi xoá junction');
 %
 % % Xóa các đoạn ngắn (bridge)
-maxBridgeLen = 3;
+maxBridgeLen = 7;
 BW = bwareaopen(BW, maxBridgeLen);
 BW = BW(2:end-1, 2:end-1);
 %% --- 4. Nối endpoint theo vòng lặp thử ---
@@ -321,12 +328,12 @@ for count = 1:nLoop
 
         vectors = fitEndpointVectors(BW, endPoints, 5);
         max_perh = 5;
+BW = bwareaopen(BW, 10);
 
     end
 
     if  count == 6
         fprintf('--> Vòng nối %d ----\n', count);
-
         % Tham số nối thử
         minCompSize = 5;
         maxDist     = 40;    % vòng sau cho phép nối xa hơn
@@ -334,6 +341,8 @@ for count = 1:nLoop
         max_perh = 5;
 
         vectors = fitEndpointVectors(BW, endPoints, 5);
+BW = bwareaopen(BW, 10);
+
     end
 
     if  count == 7
@@ -346,7 +355,8 @@ for count = 1:nLoop
 
         vectors = fitEndpointVectors(BW, endPoints, 5);
         max_perh = 10;
-
+    BW = bwmorph(BW,"spur", 1);
+BW = bwareaopen(BW, 10);
     end
     if  count == 8
         fprintf('--> Vòng nối %d ----\n', count);
@@ -358,6 +368,8 @@ for count = 1:nLoop
 
         vectors = fitEndpointVectors(BW, endPoints, 5);
         max_perh = 25;
+BW = bwareaopen(BW, 10);
+
     end
 
     [BW, linesConnected] = connectEndpoints_v3(BW, vectors, CC, minCompSize, maxDist, vecAlignThr, max_perh);

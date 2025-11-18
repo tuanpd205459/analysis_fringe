@@ -1,8 +1,14 @@
 close all;
 % chỉ có thuật toán unwrapping
 load("after_estimate.mat");
+% Thêm độ nghiêng vào pha đối tượng
+slope_x = 0.2;  % Độ nghiêng theo hướng X
+slope_y = 0.3;  % Độ nghiêng theo hướng Y
+bias = 0.1;     % Độ chênh lệch
+
 
 skeleton_image = BW;
+object_phase = object_phase + slope_x * x + slope_y * y;
 
 wrapped_phase = wrapToPi(object_phase) ;
 figure;
@@ -42,6 +48,7 @@ figure;
 imagesc(phi_est - object_phase_without_noise);
 title("Anh sai lech giua phi est va ground truth");
 colorbar;
+
 %% 8. GIẢI BỌC PHA VÀ TINH CHỈNH
 fprintf('--> Bước 4: Giải bọc pha và tinh chỉnh kết quả...\n');
 % --- Giải bọc pha sử dụng pha ước lượng ---
@@ -271,7 +278,8 @@ function [unwrappedPhase, kMap] = unwrapUsingEstimate(estimatedPhase, wrappedPha
     % Giải Wrapped pha `wrappedPhase` dựa trên pha ước lượng `estimatedPhase`.
 %     wrappedEstimate = wrapToPi(estimatedPhase);
     kMap = round((estimatedPhase - wrappedPhase) / (2*pi));
-    unwrappedPhase = wrappedPhase + 2*pi * kMap;
+%     unwrappedPhase = wrappedPhase + 2*pi * kMap;
+    unwrappedPhase = estimatedPhase + angle(estimatedPhase - wrappedPhase);
 end
 
 % -------------------------------------------------------------------------

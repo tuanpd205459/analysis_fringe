@@ -6,7 +6,8 @@ clc; clear; close all;
 % fprintf('Bắt đầu quy trình mô phỏng và tái tạo...\n');
 % Tạo một vector các giá trị SNR để kiểm tra (từ nhiễu thấp đến cao)
 % Nếu muốn theo thứ tự giảm dần (giống như bạn đang dùng)
-snr_values = 25:-1:13;   % [35 33 31 ... 13]
+% snr_values = 25:-1:13;   % [35 33 31 ... 13]
+snr_values = 35;   % [35 33 31 ... 13]
 
 % Mảng để lưu kết quả RMSE cho mỗi giá trị SNR
 results_rmse = zeros(1, length(snr_values));
