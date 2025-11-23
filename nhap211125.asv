@@ -415,7 +415,8 @@ figure;
 surf(finalUnwrappedPhase,"EdgeColor","none");
 title("Anh proposal");
 %%
-save('nhap211125.mat');
+save(nhap211125)
+
 
 
 %%

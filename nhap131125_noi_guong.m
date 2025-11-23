@@ -358,7 +358,9 @@ for count =1:n
     title('Skeleton sau khi nối endpoint (màu xanh)');
 
 end
-%%
+
+
+
 %% 7. ƯỚC LƯỢNG PHA BẰNG PHƯƠNG PHÁP PHÂN TÍCH VÂN
 fprintf('--> Bước 3: Ước lượng pha thô bằng phân tích vân...\n');
 % Làm mảnh và gán bậc vân
