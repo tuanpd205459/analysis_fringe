@@ -6,7 +6,7 @@ clc;
 % z_map = ones(100, 1) * x;
 % Kích thước lưới
 zernike_coeffs = [
-    2
+    0
     0
     0
     0
@@ -85,7 +85,7 @@ coeff(1) = 10; coeff(2) = 5;
 
 figure;
 surf(z_recon_map, "EdgeColor","none");
-title('Tái tạo bề mặt sóng từ 3D');
+title('anhr tais tao dung Zernike Legendre Fit');
 xlabel('X');
 ylabel('Y');
 zlabel('Độ lệch pha');
@@ -99,11 +99,11 @@ title("sai so");
 %% m, n indices
 coeff = zeros(1, 2);
 coeff(1) = 10; coeff(2) = 5;
-[output_coeff, z_recon_map] = ZernikeLegendreFit_removal(z_map, "2indices", coeff);
+[output_coeff, z_recon_map2] = ZernikeLegendreFit_removal(z_map, "2indices", coeff);
 
 figure;
-surf(z_recon_map, "EdgeColor","none");
-title('Tái tạo bề mặt sóng từ 3D');
+surf(z_recon_map2, "EdgeColor","none");
+title('ảnh dùng Zernike Legendre abberation removal');
 xlabel('X');
 ylabel('Y');
 zlabel('Độ lệch pha');
@@ -111,7 +111,7 @@ colormap(jet);    % Áp dụng bảng màu "jet"
 colorbar();
 
 figure;
-surf(z_recon_map - z_map,"EdgeColor","none");
+surf(z_recon_map2 - z_map,"EdgeColor","none");
 title("sai so sau khi removal");
 
 %% Fringe index
