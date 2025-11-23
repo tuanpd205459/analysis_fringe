@@ -7,10 +7,10 @@ clc;
 % Kích thước lưới
 zernike_coeffs = [
     2
-    -1
-    3
-    1.25
-    5
+    0
+    0
+    0
+    0
     2.5
     -0.25
     1
@@ -69,7 +69,7 @@ wavefront = reconstruct_wavefront(zernike_coeffs, order, grid_size);
 figure;
 % Hiển thị bề mặt sóng
 surf(wavefront,"EdgeColor","none");
-title('Tái tạo bề mặt sóng từ đa thức Zernike');
+title('ảnh mô phỏng từ đa thức Zernike');
 xlabel('X');
 ylabel('Y');
 zlabel('Độ lệch pha');
@@ -95,6 +95,24 @@ colorbar();
 figure;
 surf(z_recon_map - z_map,"EdgeColor","none");
 title("sai so");
+%%
+%% m, n indices
+coeff = zeros(1, 2);
+coeff(1) = 10; coeff(2) = 5;
+[output_coeff, z_recon_map] = ZernikeLegendreFit_removal(z_map, "2indices", coeff);
+
+figure;
+surf(z_recon_map, "EdgeColor","none");
+title('Tái tạo bề mặt sóng từ 3D');
+xlabel('X');
+ylabel('Y');
+zlabel('Độ lệch pha');
+colormap(jet);    % Áp dụng bảng màu "jet"
+colorbar();
+
+figure;
+surf(z_recon_map - z_map,"EdgeColor","none");
+title("sai so sau khi removal");
 
 %% Fringe index
 % coeff = 100;
