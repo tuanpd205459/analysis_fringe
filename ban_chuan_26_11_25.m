@@ -1,24 +1,36 @@
 clc, clear, close all;
-
+% bản này khác bản 25/11/2025 là thay thế hàm skeletonize bằng
+% hàm skeletonize của ZH... 
 %% --- 1. CẤU HÌNH THAM SỐ (PARAMETERS) ---
 % Thông số đường dẫn
-baseFolder = "D:\tuan\data 25 11 25";
-fileName = "Snapshot_0008.jpg";
-imgPath = fullfile(baseFolder, fileName);
+% Thư mục chứa ảnh
+baseFolder = "D:\tuan\data 26 11 25";
 
-% % --- 1. CHỌN 1 FILE ẢNH ĐỂ XỬ LÝ ---
-% fprintf('Vui lòng chọn 1 file ảnh để xử lý...\n');
-% [filename, folderPath] = uigetfile({'*.bmp'}, 'Chọn 1 file ảnh');
-% 
-% % Kiểm tra nếu người dùng nhấn 'Cancel'
-% if isequal(filename, 0) || isequal(folderPath, 0)
-%     fprintf('Bạn đã hủy. Dừng chương trình.\n');
-%     return;
-% end
-% 
-% % Ghép tên file và đường dẫn
-% imgPath = fullfile(folderPath, filename);
-% fprintf('Đang xử lý file: %s\n', imgPath);
+%% Lấy danh sách tất cả file ảnh trong thư mục
+jpgFiles = dir(fullfile(baseFolder, '*.jpg'));
+bmpFiles = dir(fullfile(baseFolder, '*.bmp'));
+
+files = [jpgFiles; bmpFiles];
+
+% Kiểm tra thư mục có file không
+if isempty(files)
+    error('Không có file ảnh trong thư mục!');
+end
+
+% Tìm file có ngày chỉnh sửa (datenum) mới nhất
+[~, idx] = max([files.datenum]);
+
+% Lấy tên file mới nhất
+latestFile = files(idx).name;
+imgPath = fullfile(baseFolder, latestFile);
+
+fprintf('Ảnh mới nhất: %s\n', imgPath);
+
+% Đọc ảnh
+I = imread(imgPath);
+imshow(I);
+title("Ảnh mới nhất trong folder");
+
 %%
 % Thông số xử lý ảnh
 SENSITIVITY_COEF = 0.6;   % Hệ số nhạy adaptive threshold
@@ -69,8 +81,86 @@ title(' anh bw sau khi imopen');
 % --- CÁCH MỚI (Tối ưu tốc độ và hiệu quả) ---
 % bwskel: Hàm này nhanh hơn và mạnh hơn bwmorph.
 % 'MinBranchLength': Tự động xóa các nhánh cụt ngắn hơn giá trị này (thay thế vòng lặp geodesic)
-BW_skel_clean = bwskel(BW_open, 'MinBranchLength', MIN_BRANCH_LENGTH);
+% BW_skel_clean = bwskel(BW_open, 'MinBranchLength', MIN_BRANCH_LENGTH);
+%%
 
+% --- Bước 2: Skeletonize bằng Zhang-Suen ---
+fprintf('Bước 2/3: Áp dụng thuật toán Zhang-Suen...\n');
+BW_Thinned = BW_open;
+[rows, cols] = size(BW_Thinned);
+changing = true;
+iteration = 0;
+
+while changing
+    iteration = iteration + 1;
+    changing = false;
+    BW_Del = true(rows, cols);
+
+    % --- Step 1 của Zhang-Suen ---
+    for i = 2:rows-1
+        for j = 2:cols-1
+            P = BW_Thinned(i-1:i+1, j-1:j+1);
+            P = P(:)';
+            % Sắp xếp theo thứ tự: P1(center), P2, P3, P4, P5, P6, P7, P8, P9, P2(lặp)
+            P = [P(5), P(2), P(3), P(6), P(9), P(8), P(7), P(4), P(1), P(2)];
+
+            if P(1) == 1  % Nếu pixel trung tâm là foreground
+                neighbors = sum(P(2:9));  % Số lượng neighbor foreground
+                transitions = sum(P(2:9) == 0 & P(3:10) == 1);  % Số transition 0->1
+
+                % Điều kiện Zhang-Suen Step 1
+                if neighbors >= 2 && neighbors <= 6 && transitions == 1 ...
+                        && P(2)*P(4)*P(6) == 0 && P(4)*P(6)*P(8) == 0
+                    BW_Del(i,j) = false;
+                    changing = true;
+                end
+            end
+        end
+    end
+    BW_Thinned = BW_Thinned & BW_Del;
+
+    % --- Step 2 của Zhang-Suen ---
+    BW_Del = true(rows, cols);
+    for i = 2:rows-1
+        for j = 2:cols-1
+            P = BW_Thinned(i-1:i+1, j-1:j+1);
+            P = P(:)';
+            P = [P(5), P(2), P(3), P(6), P(9), P(8), P(7), P(4), P(1), P(2)];
+
+            if P(1) == 1
+                neighbors = sum(P(2:9));
+                transitions = sum(P(2:9) == 0 & P(3:10) == 1);
+
+                % Điều kiện Zhang-Suen Step 2
+                if neighbors >= 2 && neighbors <= 6 && transitions == 1 ...
+                        && P(2)*P(4)*P(8) == 0 && P(2)*P(6)*P(8) == 0
+                    BW_Del(i,j) = false;
+                    changing = true;
+                end
+            end
+        end
+    end
+    BW_Thinned = BW_Thinned & BW_Del;
+
+    % Hiển thị tiến trình mỗi 10 iterations
+    if mod(iteration, 10) == 0
+        %             fprintf('  Iteration %d: %d pixels còn lại\n', iteration, sum(BW_Thinned(:)));
+    end
+
+    % Tránh vòng lặp vô hạn
+    if iteration > 1000
+        warning('Đã đạt giới hạn iteration (1000). Dừng thuật toán.');
+        break;
+    end
+end
+% --- Trả về kết quả ---
+
+BW = BW_Thinned;
+
+%
+BW = MZS_thinning(BW);
+BW_skel_clean = BW;
+%%
 % Làm sạch thêm các điểm cô lập (nếu cần)
 BW_skel_clean = bwmorph(BW_skel_clean, 'clean');
 
@@ -100,7 +190,7 @@ hold off;
 
 %% cắt cách điểm endpoint và branchpoints gần nhau
 BW = BW_skel_clean;
-MIN_BRANCH_LENGTH = 15;
+MIN_BRANCH_LENGTH = 60;
 BW = bwskel(BW, 'MinBranchLength', MIN_BRANCH_LENGTH);
 
 %%
@@ -139,6 +229,7 @@ imshow(BW); title('1. Skeleton Gốc (Có gai)');
 
 %%
 %% --- Tìm endpoint ---
+
 BW = bwmorph(BW,"bridge",Inf);
 BW = bwmorph(BW,"diag", Inf);
 BW = bwmorph(BW,"skeleton", Inf);
@@ -289,29 +380,36 @@ if ~isempty(vectors_data)
     % 3. Gọi hàm nối giao cắt (Hàm mới sửa dùng CCW)
     [BW_connected, list_con] = connect_intersecting_ridges(BW, endpoints_ordinate, vectors_dir, maxLen_final);
 
-    % % Hiển thị kết quả cuối cùng
-    % figure; 
-    % imshow(BW_connected); 
-    % title(['KẾT QUẢ CUỐI CÙNG (Đã nối thêm ', num2str(size(list_con, 1)), ' đoạn)']);
-    % hold on;
-    % 
-    % % Vẽ các đoạn vừa nối thêm để dễ nhìn
-    % if ~isempty(list_con)
-    %     for i = 1:size(list_con, 1)
-    %         % list_con chứa [P1_x P1_y P2_x P2_y] hoặc [P1; P2] tuỳ cách hàm trả về
-    %         % Ở code trước trả về [P1, P2] tức là 1 hàng có 4 phần tử
-    %         plot([list_con(i,1) list_con(i,3)], [list_con(i,2) list_con(i,4)], 'g-', 'LineWidth', 2);
-    %     end
-    % end
+    % Hiển thị kết quả cuối cùng
+    figure; 
+    imshow(BW_connected); 
+    title(['KẾT QUẢ CUỐI CÙNG (Đã nối thêm ', num2str(size(list_con, 1)), ' đoạn)']);
+    hold on;
+
+    % Vẽ các đoạn vừa nối thêm để dễ nhìn
+    if ~isempty(list_con)
+        for i = 1:size(list_con, 1)
+            % list_con chứa [P1_x P1_y P2_x P2_y] hoặc [P1; P2] tuỳ cách hàm trả về
+            % Ở code trước trả về [P1, P2] tức là 1 hàng có 4 phần tử
+            plot([list_con(i,1) list_con(i,3)], [list_con(i,2) list_con(i,4)], 'g-', 'LineWidth', 2);
+        end
+    end
 else
     fprintf('Không tìm thấy endpoint nào để nối thêm.\n');
     BW_connected = BW;
 end
 %%
-close all;
-%% cắt ảnh BW
+
+endpoints = bwmorph(BW_connected, "endpoints");
+[r,c] = find(endpoints);
 figure;
 imshow(BW_connected);
+hold on;
+plot(c, r, "ro");
+title("sau khi noi - endpoints");
+
+
+%% cắt ảnh BW
 
 [pos, xRec, yRec, widthRec, heightRec] = myDrawRec();
 
@@ -1806,4 +1904,63 @@ end
         fprintf('Hoàn thành sau %d lần lặp\n', num_iterations);
         fprintf('RMS cuối cùng của delta_k: %.6f\n', convergence_history(end));
     end
+end
+function S = MZS_thinning(BW)
+    S = BW > 0;
+    prev = false(size(S));
+    while true
+        % Sub-iteration 1: even pixels
+        marker = MZS_iteration(S, 0);
+        S(marker) = 0;
+
+        % Sub-iteration 2: odd pixels
+        marker = MZS_iteration(S, 1);
+        S(marker) = 0;
+
+        if isequal(S, prev), break; end
+        prev = S;
+    end
+end
+function marker = MZS_iteration(S, parity)
+    % Pad để tránh lỗi biên
+    P = padarray(S, [1 1], 0, 'both');
+
+    % Lấy lân cận (theo thứ tự ZS)
+    P2 = P(1:end-2,2:end-1); % north
+    P3 = P(1:end-2,3:end);   % northeast
+    P4 = P(2:end-1,3:end);   % east
+    P5 = P(3:end,3:end);     % southeast
+    P6 = P(3:end,2:end-1);   % south
+    P7 = P(3:end,1:end-2);   % southwest
+    P8 = P(2:end-1,1:end-2); % west
+    P9 = P(1:end-2,1:end-2); % northwest
+    P1 = P(2:end-1,2:end-1); % center
+
+    % Tổng số hàng xóm (B)
+    B = P2+P3+P4+P5+P6+P7+P8+P9;
+
+    % C(p1) theo công thức trong paper
+    C = (~P2 & (P3|P4)) + (~P4 & (P5|P6)) + ...
+        (~P6 & (P7|P8)) + (~P8 & (P9|P2));
+
+    % Điều kiện chung
+    cond = (C==1);
+
+    if parity == 0   % subfield chẵn
+        cond = cond & (mod(bsxfun(@plus,(1:size(S,1))',(1:size(S,2))),2)==0);
+        cond = cond & (B>=2 & B<=7);
+        cond = cond & (~(P2 & P4 & P6));
+        cond = cond & (~(P4 & P6 & P8));
+    else             % subfield lẻ
+        cond = cond & (mod(bsxfun(@plus,(1:size(S,1))',(1:size(S,2))),2)==1);
+        cond = cond & (B>=1 & B<=7);
+        cond = cond & (~(P2 & P4 & P8));
+        cond = cond & (~(P2 & P6 & P8));
+
+        % Bổ sung điều kiện giữ pixel để bảo toàn 2x2 / diagonal
+        diagNeighbors = (P3|P5|P7|P9);
+        cond = cond & ~( (B==1) & diagNeighbors );
+    end
+
+    marker = P1 & cond;
 end

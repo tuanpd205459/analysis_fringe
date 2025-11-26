@@ -1,24 +1,47 @@
 clc, clear, close all;
-
+% bản này khá hoàn thiện, chạy ảnh oke-dataset4/26-11-25
+% đã sửa 27/11/25
+% bản này khác bản 26/11/2025 là thay thế hàm skeletonize bằng
+% hàm skeletonize của Matlab... 
 %% --- 1. CẤU HÌNH THAM SỐ (PARAMETERS) ---
 % Thông số đường dẫn
-baseFolder = "D:\tuan\data 25 11 25";
-fileName = "Snapshot_0008.jpg";
-imgPath = fullfile(baseFolder, fileName);
+% Thư mục chứa ảnh
+baseFolder = "D:\tuan\data 26 11 25\dataset4";
 
-% % --- 1. CHỌN 1 FILE ẢNH ĐỂ XỬ LÝ ---
-% fprintf('Vui lòng chọn 1 file ảnh để xử lý...\n');
-% [filename, folderPath] = uigetfile({'*.bmp'}, 'Chọn 1 file ảnh');
-% 
-% % Kiểm tra nếu người dùng nhấn 'Cancel'
-% if isequal(filename, 0) || isequal(folderPath, 0)
-%     fprintf('Bạn đã hủy. Dừng chương trình.\n');
-%     return;
+% % Lấy danh sách tất cả file ảnh trong thư mục
+% jpgFiles = dir(fullfile(baseFolder, '*.jpg'));
+% bmpFiles = dir(fullfile(baseFolder, '*.bmp'));
+% files = [jpgFiles; bmpFiles];
+% if isempty(files)
+%     error('Không có file ảnh trong thư mục!');
 % end
-% 
-% % Ghép tên file và đường dẫn
-% imgPath = fullfile(folderPath, filename);
-% fprintf('Đang xử lý file: %s\n', imgPath);
+% [~, idx] = max([files.datenum]);
+% latestFile = files(idx).name;
+% imgPath = fullfile(baseFolder, latestFile);
+% fprintf('Ảnh mới nhất: %s\n', imgPath);
+
+
+% --- 1. CHỌN 1 FILE ẢNH ĐỂ XỬ LÝ ---
+defaultFolder = 'D:\tuan\data 26 11 25\dataset4';
+
+[filename, folderPath] = uigetfile({'*.bmp'}, ...
+                                   'Chọn 1 file ảnh', ...
+                                   defaultFolder);
+
+if isequal(filename, 0)
+    fprintf('Bạn đã hủy. Dừng chương trình.\n');
+    return;
+end
+
+imgPath = fullfile(folderPath, filename);
+fprintf('Đang xử lý file: %s\n', imgPath);
+
+
+% Đọc ảnh
+I = imread(imgPath);
+imshow(I);
+title("Ảnh mới nhất trong folder");
+
 %%
 % Thông số xử lý ảnh
 SENSITIVITY_COEF = 0.6;   % Hệ số nhạy adaptive threshold
@@ -139,6 +162,7 @@ imshow(BW); title('1. Skeleton Gốc (Có gai)');
 
 %%
 %% --- Tìm endpoint ---
+
 BW = bwmorph(BW,"bridge",Inf);
 BW = bwmorph(BW,"diag", Inf);
 BW = bwmorph(BW,"skeleton", Inf);
@@ -176,7 +200,7 @@ for count =1:n
     hold on; plot(col, row, 'ro', 'MarkerSize', 10, 'LineWidth', 2);
     %
     fprintf('--> Bước 2b: Ước lượng vector hướng theo đoạn liên thông\n');
-    vectors = fitEndpointVectors(BW, endPoints, 12);
+    vectors = fitEndpointVectors(BW, endPoints, 20);
 
     imshow(BW); hold on;
     for i = 1:size(vectors,1)
@@ -284,34 +308,45 @@ if ~isempty(vectors_data)
     vectors_dir      = vectors_data(:, 3:4);   % Cột 3,4 là vx,vy
 
     % 2. Cấu hình tham số nối
-    maxLen_final = 30; % Độ dài tìm kiếm (tăng lên nếu vân đứt xa)
+    maxLen_final = 50; % Độ dài tìm kiếm (tăng lên nếu vân đứt xa)
 
     % 3. Gọi hàm nối giao cắt (Hàm mới sửa dùng CCW)
     [BW_connected, list_con] = connect_intersecting_ridges(BW, endpoints_ordinate, vectors_dir, maxLen_final);
 
-    % % Hiển thị kết quả cuối cùng
-    % figure; 
-    % imshow(BW_connected); 
-    % title(['KẾT QUẢ CUỐI CÙNG (Đã nối thêm ', num2str(size(list_con, 1)), ' đoạn)']);
-    % hold on;
-    % 
-    % % Vẽ các đoạn vừa nối thêm để dễ nhìn
-    % if ~isempty(list_con)
-    %     for i = 1:size(list_con, 1)
-    %         % list_con chứa [P1_x P1_y P2_x P2_y] hoặc [P1; P2] tuỳ cách hàm trả về
-    %         % Ở code trước trả về [P1, P2] tức là 1 hàng có 4 phần tử
-    %         plot([list_con(i,1) list_con(i,3)], [list_con(i,2) list_con(i,4)], 'g-', 'LineWidth', 2);
-    %     end
-    % end
+    % Hiển thị kết quả cuối cùng
+    figure; 
+    imshow(BW_connected); 
+    title(['KẾT QUẢ CUỐI CÙNG (Đã nối thêm ', num2str(size(list_con, 1)), ' đoạn)']);
+    hold on;
+
+    % Vẽ các đoạn vừa nối thêm để dễ nhìn
+    if ~isempty(list_con)
+        for i = 1:size(list_con, 1)
+            % list_con chứa [P1_x P1_y P2_x P2_y] hoặc [P1; P2] tuỳ cách hàm trả về
+            % Ở code trước trả về [P1, P2] tức là 1 hàng có 4 phần tử
+            plot([list_con(i,1) list_con(i,3)], [list_con(i,2) list_con(i,4)], 'g-', 'LineWidth', 2);
+        end
+    end
 else
     fprintf('Không tìm thấy endpoint nào để nối thêm.\n');
     BW_connected = BW;
 end
+MIN_BRANCH_LENGTH = 40;
+BW_connected = bwskel(BW_connected, 'MinBranchLength', MIN_BRANCH_LENGTH);
+
 %%
 close all;
-%% cắt ảnh BW
+
+endpoints = bwmorph(BW_connected, "endpoints");
+[r,c] = find(endpoints);
 figure;
 imshow(BW_connected);
+hold on;
+plot(c, r, "ro");
+title("sau khi noi - endpoints");
+
+
+%% cắt ảnh BW
 
 [pos, xRec, yRec, widthRec, heightRec] = myDrawRec();
 
@@ -1352,9 +1387,13 @@ wrappedPhase = angle(complexField);
 end
 function [unwrappedPhase, kMap] = unwrapUsingEstimate(estimatedPhase, wrappedPhase)
     % Giải Wrapped pha `wrappedPhase` dựa trên pha ước lượng `estimatedPhase`.
-%     wrappedEstimate = wrapToPi(estimatedPhase);
+    % wrappedEstimate = wrapToPi(estimatedPhase);
     kMap = round((estimatedPhase - wrappedPhase) / (2*pi));
     unwrappedPhase = wrappedPhase + 2*pi * kMap;
+    % ta có: estimated ~ unwraping_phase
+    % mà un_phase = wwrapped + k.2pi
+    % thay 2 vào 1, có: estiamted - wrapped ~ k.2pi
+    % Suy ra: k ~ (estimated - wrapped)/2pi
 end
 function varargout = crop_multiple_to_smallest(varargin)
     % Giả định tất cả các biến là 2D ma trận
