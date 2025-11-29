@@ -6,11 +6,11 @@ clc;
 % z_map = ones(100, 1) * x;
 % Kích thước lưới
 zernike_coeffs = [
-    0
-    0
-    0
-    0
-    0
+    2
+    2.5
+    4
+    -5
+    6
     2.5
     -0.25
     1
@@ -42,30 +42,12 @@ zernike_coeffs = [
     0.00000000
     0
 ];
-% filename = 'guongvat2-1.xlsx';
-% sheetname = 'guongvat2-1'; % Tên sheet cụ thể
-% range = 'M45:M89'; % Phạm vi dữ liệu
-% % Đọc dữ liệu từ sheet cụ thể
-% data = readtable(filename, 'Sheet', sheetname, 'Range', range);
 
 % Các biến khác
 order = 15; % Bậc cao nhất của Zernike
 grid_size = 512; % Kích thước lưới
-% zernike_coeffs = data{:,:}; % Cột chứa các hệ số Zernike
-
-
-
 
 wavefront = reconstruct_wavefront(zernike_coeffs, order, grid_size);
-%wavefront = atan2(sin(wavefront), cos(wavefront));
-
-% % Loại bỏ các giá trị ngoài đường tròn đơn vị
-% [X, Y] = meshgrid(linspace(-1, 1, grid_size), linspace(-1, 1, grid_size));
-% R = sqrt(X.^2 + Y.^2);
-% be_mat_tai_tao = wavefront ;
-% % be_mat_tai_tao = wavefront;
-% % wavefront(R > 1) = NaN;
-% % be_mat_tai_tao(R>1) = NaN;
 figure;
 % Hiển thị bề mặt sóng
 surf(wavefront,"EdgeColor","none");
@@ -80,7 +62,7 @@ z_map = wavefront;
 
 %% m, n indices
 coeff = zeros(1, 2);
-coeff(1) = 10; coeff(2) = 5;
+coeff(1) = 40; coeff(2) = 20;
 [output_coeff, z_recon_map] = ZernikeLegendreFit(z_map, "2indices", coeff);
 
 figure;
@@ -94,11 +76,11 @@ colorbar();
 
 figure;
 surf(z_recon_map - z_map,"EdgeColor","none");
-title("sai so");
+title("sai so giuawx be mat fitting va gt");
 %%
 %% m, n indices
 coeff = zeros(1, 2);
-coeff(1) = 10; coeff(2) = 5;
+coeff(1) = 40; coeff(2) = 20;
 [output_coeff, z_recon_map2] = ZernikeLegendreFit_removal(z_map, "2indices", coeff);
 
 figure;
@@ -109,10 +91,18 @@ ylabel('Y');
 zlabel('Độ lệch pha');
 colormap(jet);    % Áp dụng bảng màu "jet"
 colorbar();
-
+error_removal = z_recon_map2 - z_map;
 figure;
-surf(z_recon_map2 - z_map,"EdgeColor","none");
-title("sai so sau khi removal");
+surf(error_removal,"EdgeColor","none");
+title("sai so sau khi removal giua fitting va gt");
+
+%%
+figure;
+surf(z_recon_map2 - z_recon_map - error_removal,"EdgeColor","none");
+title("sai so giữa 2 pp - tru di sai so removal vs gt");
+
+
+%%
 
 %% Fringe index
 % coeff = 100;

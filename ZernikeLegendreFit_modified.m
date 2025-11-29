@@ -48,8 +48,7 @@
 %     function jacobiZernike to calculate the value of Jacobi polynomials
 %     recursively. This function was later modified by Yiwen Fan as
 %     function jacobiZernike_table.
-
-function [output_coeff, z_recon_map] = ZernikeLegendreFit_removal(z_map, index_type, coeff_max, J, K, center_j, center_i)
+function [output_coeff, z_recon_map] = ZernikeLegendreFit(z_map, index_type, coeff_max, J, K, center_j, center_i)
 if nargin <= 2
     error("fit_Zernike_quadrature requires at least 3 input: z_map, index_type, coeff_max.");
 end
@@ -141,30 +140,42 @@ for m = 0:m_max
         end
     end
 end
-%%
-% =========================================================
-% INSERT: LOẠI BỎ TILT VÀ DEFOCUS
-% =========================================================
-% Kiểm tra kích thước ma trận để tránh lỗi nếu fitting bậc thấp
-[rows_a, cols_a] = size(amn);
 
-% 1. Loại bỏ TILT (m=1, n=0) -> N = 1
-if rows_a >= 2 && cols_a >= 1
-    amn(2, 1) = 0; % Xóa Tilt X
-    bmn(2, 1) = 0; % Xóa Tilt Y
+%% --- MODIFICATION START: REMOVE TILT, DEFOCUS, SPHERICAL ---
+if index_type == "fringe"
+    % Fringe indices to remove:
+    % 2: Tilt X
+    % 3: Tilt Y
+    % 4: Defocus
+    % 9: Primary Spherical Aberration
+    remove_indices = [2, 3, 4, 9];
+    
+    for idx = remove_indices
+        if idx <= coeff_max
+            [n_rem, m_rem] = fringe22index(idx);
+            
+            % amn/bmn are accessed via (m+1, n+1) because MATLAB is 1-based
+            % and m, n can be 0.
+            if m_rem >= 0
+                % Remove from amn (Cosine terms)
+                if (m_rem + 1 <= size(amn, 1)) && (n_rem + 1 <= size(amn, 2))
+                    amn(m_rem+1, n_rem+1) = 0;
+                end
+            elseif m_rem < 0
+                % Remove from bmn (Sine terms)
+                if (-m_rem + 1 <= size(bmn, 1)) && (n_rem + 1 <= size(bmn, 2))
+                    bmn(-m_rem+1, n_rem+1) = 0;
+                end
+            end
+        end
+    end
 end
-
-% 2. Loại bỏ DEFOCUS (m=0, n=1) -> N = 2
-if rows_a >= 1 && cols_a >= 2
-    amn(1, 2) = 0; % Xóa Defocus
-end
-
-% (Tùy chọn) Loại bỏ Piston (m=0, n=0) -> N = 0
-amn(1, 1) = 0; 
-% =========================================================
+%% --- MODIFICATION END ---
 
 
-%%
+
+
+
 % Reconstructrion
 [i_mesh, j_mesh] = meshgrid((1:x_pix),(1:y_pix));
 i_mesh = (i_mesh - center_i)/r_x_pix; j_mesh = (j_mesh - center_j)/r_y_pix;

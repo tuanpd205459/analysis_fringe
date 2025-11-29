@@ -422,54 +422,8 @@ title("Anh final UnwrappedPhase");
 % [finalUnwrappedPhase, ~, ~] = correct_sparse_artifacts_iterative(finalUnwrappedPhase, ...
 %     'BoundaryCondition', 'symmetric', 'BoundaryWidth', 2, 'MaxIterations', 150);
 
-%% 11. CÁC THUẬT TOÁN UNWRAPPING KHÁC
-unwrapped_Phase_LS_DCT = unwrapping.unwrapPhase(wrapped_phase, 'ls', 'dct'); % LS với DCT
-unwrapped_Phase_TIE_FFT = unwrapping.unwrapPhase(wrapped_phase, 'tie', 'fft'); % TIE với FFT
-unwrapped_Phase_noncontinue = unwrapping.unwrapPhase(wrapped_phase, 'linh'); % Phương pháp của a Linh
-unwrapped_Phase_2dweight = unwrapping.unwrapPhase(wrapped_phase, '2dweight'); % 2D weighted phase unwrapping
-% proposal 
-unwrapped_Phase_proposal = finalUnwrappedPhase;
-[ unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, unwrapped_Phase_noncontinue,...
-    unwrapped_Phase_2dweight, unwrapped_Phase_proposal]...
-    = crop_multiple_to_smallest( unwrapped_Phase_LS_DCT, unwrapped_Phase_TIE_FFT, unwrapped_Phase_noncontinue,...
-    unwrapped_Phase_2dweight, unwrapped_Phase_proposal);
-[M,N] = size(unwrapped_Phase_LS_DCT);
-
-%% 6. PHÂN TÍCH SAI SỐ (TIẾP THEO)
-
-%% truwf nghieeng
-  [unwrapped_Phase_LS_DCT, phi_plane] = remove_plane_manual(unwrapped_Phase_LS_DCT);
-  phase_offset = phi_plane;
-  %   unwrapped_Phase_LS_DCT = unwrapped_Phase_LS_DCT - phase_offset;
-  unwrapped_Phase_TIE_FFT = unwrapped_Phase_TIE_FFT - phase_offset;
-  unwrapped_Phase_noncontinue = unwrapped_Phase_noncontinue - phase_offset;
-  unwrapped_Phase_2dweight = unwrapped_Phase_2dweight - phase_offset;
-  finalUnwrappedPhase = finalUnwrappedPhase - phase_offset;
-  % offset về 0
-  unwrapped_Phase_LS_DCT  =  unwrapped_Phase_LS_DCT- min(unwrapped_Phase_LS_DCT(:));
-  unwrapped_Phase_TIE_FFT  =  unwrapped_Phase_TIE_FFT- min(unwrapped_Phase_TIE_FFT(:));
-  unwrapped_Phase_noncontinue  =  unwrapped_Phase_noncontinue- min(unwrapped_Phase_noncontinue(:));
-  unwrapped_Phase_2dweight  =  unwrapped_Phase_2dweight- min(unwrapped_Phase_2dweight(:));
-  finalUnwrappedPhase  =  finalUnwrappedPhase- min(finalUnwrappedPhase(:));
-
 %%
-figure;
-surf(unwrapped_Phase_LS_DCT,"EdgeColor","none");
-title("Anh unwrapped_Phase_LS_DCT");
-figure;
-surf(unwrapped_Phase_TIE_FFT,"EdgeColor","none");
-title("Anh unwrapped_Phase_TIE_FFT");
-figure;
-surf(unwrapped_Phase_noncontinue,"EdgeColor","none");
-title("Anh funwrapped_Phase_noncontinue");
-figure;
-surf(unwrapped_Phase_2dweight,"EdgeColor","none");
-title("Anh unwrapped_Phase_2dweight");
-figure;
-surf(finalUnwrappedPhase,"EdgeColor","none");
-title("Anh proposal");
-%%
-save('chuong_trinh_chinh_anh_that.mat');
+save('chuong_trinh_chinh_tao_phase.mat');
 
 
 %%
