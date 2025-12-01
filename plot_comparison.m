@@ -1,4 +1,4 @@
-%% 1. INITIALIZATION & DATA LOADING
+%% so sánh ảnh thật
 clc; clear; close all;
 
 % Load dữ liệu
@@ -28,11 +28,11 @@ catch
     z_recon_map2 = z_map; 
 end
 
-% Bước 2: Smoothing (Lọc mượt) - Chọn Cách 2 (Gaussian) như bạn note
-sigma = 2; 
-window = 6 * sigma;
-h = fspecial('gaussian', window, sigma);
-final_proposal_smoothed = imfilter(z_recon_map2, h, 'replicate');
+% % Bước 2: Smoothing (Lọc mượt) - Chọn Cách 2 (Gaussian) như bạn note
+% sigma = 2; 
+% window = 6 * sigma;
+% h = fspecial('gaussian', window, sigma);
+% final_proposal_smoothed = imfilter(z_recon_map2, h, 'replicate');
 
 %% 3. PREPARE DATA FOR PLOTTING
 % Gom dữ liệu vào Cell Array để vẽ vòng lặp cho gọn
@@ -105,6 +105,6 @@ exportName = 'Fig_Comparison_Methods';
 % Xuất file ảnh PNG độ phân giải cao (600 DPI)
 exportgraphics(fig, [exportName '.png'], 'Resolution', 600);
 % Xuất file PDF Vector (cho vào LaTeX/Word không bị vỡ)
-exportgraphics(fig, [exportName '.pdf'], 'ContentType', 'vector');
+% exportgraphics(fig, [exportName '.pdf'], 'ContentType', 'vector');
 
 disp('Đã xuất hình ảnh thành công!');

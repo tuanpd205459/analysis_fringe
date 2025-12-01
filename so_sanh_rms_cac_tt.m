@@ -24,8 +24,6 @@ nPhase = numel(phase_names);
 % --- Ma trận lưu kết quả RMSE (nPhase x nSNR) ---
 results_rmse_all = zeros(nPhase, nSNR);
 
-
-
 % <<< --- BẮT ĐẦU VÒNG LẶP CHÍNH --- >>>
 for idxSNR = 1:length(snr_values)
 
@@ -47,9 +45,11 @@ auto_fft = 0;
 % noise_level = 0;
 % noise = noise_level * randn(N, N) .* sigma;
 
-
+load("my_create_zernike.mat");
+N = size(surface,1);
 [X, Y] = meshgrid(linspace(-1,1,N), linspace(-1,1,M));
-object_phase_without_noise = 2 * peaks(3*X, 3*Y);
+
+object_phase_without_noise = surface;
 
 
 %%
@@ -80,7 +80,6 @@ hologram = a + b .* cos(carrier + object_phase);
 % title('Ảnh Hologram (Giao thoa) có nhiễu');
 %% 3. Tạo bề mặt interferogram
 hologram = mat2gray(hologram);
-imwrite(hologram, 'hologram.bmp');
 
 %% 5. Noise removal
 hologram = imgaussfilt(hologram, 1);
@@ -91,7 +90,7 @@ hologram = imgaussfilt(hologram, 1);
 % colorbar;
 % title('hologram sau noise removal : ');
 %% 6. Histogram equalization
-% hologram = adapthisteq(hologram);
+hologram = adapthisteq(hologram);
 % figure;
 % imshow(hologram);
 % colorbar;

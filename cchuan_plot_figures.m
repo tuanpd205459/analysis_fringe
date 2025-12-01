@@ -35,15 +35,13 @@ dataList = { ...
     final_phi_proposed,          'Proposed (Final)' ...
 };
 
-% Ảnh màu turbo
-%% 1.5 SETUP SPATIAL COORDINATES (MM)
+%% Ảnh màu turbo
+% 1.5 SETUP SPATIAL COORDINATES (MM)
 px_size = 3.45e-3; % 3.45 µm = 0.00345 mm
 [rows, cols] = size(dataList{1,1});
 x_vec = (0 : cols-1) * px_size;
 y_vec = (0 : rows-1) * px_size;
-
-%% 2. GLOBAL COLOR LIMITS
-
+%
 all_pixels = []; 
 for i = 1:size(dataList, 1)
     d = dataList{i,1};

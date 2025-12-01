@@ -1,7 +1,8 @@
 clc, clear, close all;
 %%
 tic
-load("chuong_trinh_chinh_tao_phase.mat");
+load("cchuong_trinh_chinh_tao_phase.mat");
+addpath("D:\tuan\analysis\analysis_fringe\export_fig");
 
 %%
 % --- Unwrap phase bằng các thuật toán ---
@@ -12,31 +13,23 @@ phi_proposed     = finalUnwrappedPhase;                                     % Pr
 phi_goldstein    = unwrap_goldstein(wrapped_phase);     % goldstein branch-cut
 
 % --- Crop tất cả về cùng kích thước nhỏ nhất ---
-[phi_goldstein, phi_tie_dct, phi_quality, phi_wls, phi_proposed] = ...
-    crop_multiple_to_smallest(phi_goldstein, phi_tie_dct, phi_quality, phi_wls, phi_proposed);
+[wrapped_phase, phi_goldstein, phi_tie_dct, phi_quality, phi_wls, phi_proposed] = ...
+    crop_multiple_to_smallest(wrapped_phase, phi_goldstein, phi_tie_dct, phi_quality, phi_wls, phi_proposed);
 
-% --- Kích thước ảnh ---
 [M,N] = size(phi_goldstein);
-%%
-
 
 %% 2. PROCESSING PROPOSAL METHOD (Code xử lý của bạn)
-% Bước 1: Zernike Removal
 coeff = [25, 25]; % Hệ số Zernike
 
-% Gọi hàm của bạn (Giả sử hàm này đã có trong path)
-%% 1. ZERNIKE REMOVAL (Loại bỏ quang sai/nghiêng)
-% Giả sử 'coeff' và các biến 'phi_...' đầu vào đã có sẵn
-% Chuẩn hóa tên biến đầu ra bắt đầu bằng 'final_'
-
+% 1. ZERNIKE REMOVAL (Loại bỏ quang sai/nghiêng)
 [~, final_phi_proposed]  = ZernikeLegendreFit_removal(phi_proposed, "2indices", coeff);
 [~, final_phi_goldstein] = ZernikeLegendreFit_removal(phi_goldstein, "2indices", coeff);
 [~, final_phi_tie_dct]   = ZernikeLegendreFit_removal(phi_tie_dct, "2indices", coeff);
 [~, final_phi_quality]   = ZernikeLegendreFit_removal(phi_quality, "2indices", coeff);
 [~, final_phi_wls]       = ZernikeLegendreFit_removal(phi_wls, "2indices", coeff);
 
-%% 1. PACK RESULTS (ĐÃ BỎ 'PROPOSED RAW')
 dataList = { ...
+    wrapped_phase,              'wrapped_phase';...
     final_phi_goldstein,         'Goldstein'; ...
     final_phi_quality,           'Quality-Guided'; ...
     final_phi_tie_dct,           'TIE-DCT'; ...
@@ -44,23 +37,21 @@ dataList = { ...
     final_phi_proposed,          'Proposed (Final)' ...
 };
 
-% Ảnh màu turbo
-%% 1.5 SETUP SPATIAL COORDINATES (MM)
+% 1.5 SETUP SPATIAL COORDINATES (MM)
 px_size = 3.45e-3; % 3.45 µm = 0.00345 mm
 [rows, cols] = size(dataList{1,1});
 x_vec = (0 : cols-1) * px_size;
 y_vec = (0 : rows-1) * px_size;
-
-%% 2. GLOBAL COLOR LIMITS
-g_min = inf; 
-g_max = -inf;
+%
+all_pixels = []; 
 for i = 1:size(dataList, 1)
     d = dataList{i,1};
-    g_min = min(g_min, min(d(:)));
-    g_max = max(g_max, max(d(:)));
+    all_pixels = [all_pixels; d(:)]; 
 end
-z_lims = [g_min, g_max];
-
+robust_min = prctile(all_pixels, 0.1); 
+robust_max = prctile(all_pixels, 99.8); 
+z_lims = [robust_min, robust_max];
+clear all_pixels;
 %% 3. FIGURE SETTINGS
 figWidth  = 17.5;
 figHeight = 10;
@@ -69,16 +60,20 @@ fontName  = 'Times New Roman';
 
 fig = figure('Units', 'centimeters', ...
              'Position', [2, 2, figWidth, figHeight], ...
-             'Color', 'w');
+             'Color', 'w', ...
+             'Name', 'Fig_Comparison_5_Real_2D_MM_turbo', ...
+             'NumberTitle', 'off');
+
 t = tiledlayout(2, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
 
 %% 4. DRAW 5 SUBFIGURES (2D)
-num_imgs = 5;
+num_imgs = length(dataList);
+cols_fig = 3;     % số cột của layout
 
-labels = {'(a)', '(b)', '(c)', '(d)', '(e)'};
-axs = gobjects(1,5);
+labels = {'(a)', '(b)', '(c)', '(d)', '(e)', '(f)'};
+axs = gobjects(1, length(dataList));
 
-for i = 1:5
+for i = 1: length(dataList)
     axs(i) = nexttile;
 
     data = dataList{i,1};
@@ -88,71 +83,57 @@ for i = 1:5
     clim(z_lims);
     colormap(gca, turbo);
 
- % Thêm nhãn (a), (b), ...
+    % Thêm nhãn (a), (b), ...
     title(labels{i}, 'FontWeight','bold', 'FontSize', fontSize+1, ...
-          'FontName','Times New Roman', 'Interpreter','latex');
+        'FontName','Times New Roman', 'Interpreter','latex');
 
-    % Trục X
-        xlabel('x (mm)', 'Interpreter', 'latex');
-
-
-    % Trục Y
-        ylabel('y (mm)', 'Interpreter', 'latex');
-
+    xlabel('x (mm)', 'Interpreter', 'latex');
+    ylabel('y (mm)', 'Interpreter', 'latex');
 
     set(gca, 'FontName', fontName, 'FontSize', fontSize, ...
-             'LineWidth', 1, 'TickLabelInterpreter', 'latex');
+        'LineWidth', 1, 'TickLabelInterpreter', 'latex');
     box on;
 end
-
-%% 5. COLORBAR (CHUNG)
 cb = colorbar;
-cb.Layout.Tile = 'east';
-cb.Label.String = 'Phase (rad)';
-cb.Label.Interpreter = 'latex';
-cb.Label.FontSize = fontSize;
-cb.TickLabelInterpreter = 'latex';
+cb.Layout.Tile = 'east'; 
 cb.Limits = z_lims;
 
-%% 6. EXPORT
-exportName = 'Fig_Comparison_5_Images_2D_MM';
-exportgraphics(fig, [exportName '.png'], 'Resolution', 600);
+cb.TickLabelInterpreter = 'latex';
+cb.FontSize = fontSize;
+
+cb.Label.String = 'Phase (rad)';
+cb.Label.Interpreter = 'latex';
+cb.Label.FontSize = fontSize + 1;
+
+saveFolder = fullfile(pwd, 'ExportedFigures_experiments');
+if ~exist(saveFolder, 'dir')
+    mkdir(saveFolder);
+end
+timestamp = datestr(now, 'yyyy-mm-dd_HH-MM-SS');
+
+fileName = ['Fig_Comparison_5_Real_2D_MM_turbo' timestamp];   % đổi ten anh
+fullPath = fullfile(saveFolder, fileName);
+export_fig([fullPath '.png'], '-png', '-r600');       % PNG 600 dpi
+export_fig([fullPath '.eps'], '-eps', '-opengl');   % EPS vector
+
 %%
 % Ảnh màu jet
-%% 1.5 SETUP SPATIAL COORDINATES (MM)
-px_size = 3.45e-3; % 3.45 µm = 0.00345 mm
-[rows, cols] = size(dataList{1,1});
-x_vec = (0 : cols-1) * px_size;
-y_vec = (0 : rows-1) * px_size;
-
-%% 2. GLOBAL COLOR LIMITS
-g_min = inf; 
-g_max = -inf;
-for i = 1:size(dataList, 1)
-    d = dataList{i,1};
-    g_min = min(g_min, min(d(:)));
-    g_max = max(g_max, max(d(:)));
-end
-z_lims = [g_min, g_max];
-
-%% 3. FIGURE SETTINGS
-figWidth  = 17.5;
-figHeight = 10;
-fontSize  = 10;
-fontName  = 'Times New Roman';
-
 fig = figure('Units', 'centimeters', ...
              'Position', [2, 2, figWidth, figHeight], ...
-             'Color', 'w');
+             'Color', 'w', ...
+             'Name', 'Fig_Comparison_5_Real_2D_MM_turbo', ...
+             'NumberTitle', 'off');
+
 t = tiledlayout(2, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
 
 %% 4. DRAW 5 SUBFIGURES (2D)
-num_imgs = 5;
+num_imgs = length(dataList);
+cols_fig = 3;     % số cột của layout
 
-labels = {'(a)', '(b)', '(c)', '(d)', '(e)'};
-axs = gobjects(1,5);
+labels = {'(a)', '(b)', '(c)', '(d)', '(e)', '(f)'};
+axs = gobjects(1, length(dataList));
 
-for i = 1:5
+for i = 1: length(dataList)
     axs(i) = nexttile;
 
     data = dataList{i,1};
@@ -162,168 +143,226 @@ for i = 1:5
     clim(z_lims);
     colormap(gca, "jet");
 
- % Thêm nhãn (a), (b), ...
+    % Thêm nhãn (a), (b), ...
     title(labels{i}, 'FontWeight','bold', 'FontSize', fontSize+1, ...
-          'FontName','Times New Roman', 'Interpreter','latex');
+        'FontName','Times New Roman', 'Interpreter','latex');
 
-    % Trục X
-        xlabel('x (mm)', 'Interpreter', 'latex');
-
-
-    % Trục Y
-        ylabel('y (mm)', 'Interpreter', 'latex');
-
+    xlabel('x (mm)', 'Interpreter', 'latex');
+    ylabel('y (mm)', 'Interpreter', 'latex');
 
     set(gca, 'FontName', fontName, 'FontSize', fontSize, ...
-             'LineWidth', 1, 'TickLabelInterpreter', 'latex');
+        'LineWidth', 1, 'TickLabelInterpreter', 'latex');
     box on;
 end
-
-%% 5. COLORBAR (CHUNG)
 cb = colorbar;
-cb.Layout.Tile = 'east';
-cb.Label.String = 'Phase (rad)';
-cb.Label.Interpreter = 'latex';
-cb.Label.FontSize = fontSize;
-cb.TickLabelInterpreter = 'latex';
+cb.Layout.Tile = 'east'; 
 cb.Limits = z_lims;
 
-%% 6. EXPORT
-exportName = 'Fig_Comparison_5_Images_2D_MM_jet';
-exportgraphics(fig, [exportName '.png'], 'Resolution', 600);
+cb.TickLabelInterpreter = 'latex';
+cb.FontSize = fontSize;
 
-%%
+cb.Label.String = 'Phase (rad)';
+cb.Label.Interpreter = 'latex';
+cb.Label.FontSize = fontSize + 1;
+
+saveFolder = fullfile(pwd, 'ExportedFigures_experiments');
+if ~exist(saveFolder, 'dir')
+    mkdir(saveFolder);
+end
+timestamp = datestr(now, 'yyyy-mm-dd_HH-MM-SS');
+
+fileName = ['Fig_Comparison_5_Real_2D_MM_jet' timestamp];   % đổi ten anh
+fullPath = fullfile(saveFolder, fileName);
+export_fig([fullPath '.png'], '-png', '-r600');       % PNG 600 dpi
+export_fig([fullPath '.eps'], '-eps', '-opengl');   % EPS vector
 
 
-% ảnh 3D
-%% 1. PACK RESULTS
+%% ảnh 3D
 dataList = { ...
-    final_phi_goldstein,   'Goldstein'; ...
-    final_phi_quality,     'Quality-Guided'; ...
-    final_phi_tie_dct,     'TIE-DCT'; ...
-    final_phi_wls,         'WLS'; ...
-    final_phi_proposed,    'Proposed (Final)' ...
+    wrapped_phase,              'wrapped_phase';...
+
+    final_phi_goldstein,         'Goldstein'; ...
+    final_phi_quality,           'Quality-Guided'; ...
+    final_phi_tie_dct,           'TIE-DCT'; ...
+    final_phi_wls,               'WLS'; ...
+    final_phi_proposed,          'Proposed (Final)' ...
 };
 
-%% 1.5 SETUP SPATIAL COORDINATES (MM)
 px_size = 3.45e-3; % 3.45 µm = 0.00345 mm
 [rows, cols] = size(dataList{1,1});
 x_vec = (0:cols-1) * px_size;
 y_vec = (0:rows-1) * px_size;
 [X, Y] = meshgrid(x_vec, y_vec);
 
-%% 2. GLOBAL COLOR LIMITS
-g_min = inf; g_max = -inf;
-for i = 1:size(dataList,1)
-    d = dataList{i,1};
-    g_min = min(g_min, min(d(:)));
-    g_max = max(g_max, max(d(:)));
-end
-z_lims = [g_min, g_max];
+fig = figure('Units', 'centimeters', ...
+             'Position', [2, 2, figWidth, figHeight], ...
+             'Color', 'w', ...
+             'Name', 'Fig_Comparison_5_real_3D_MM_turbo', ...
+             'NumberTitle', 'off');
 
-%% 3. FIGURE SETTINGS
-figWidth = 17.5; figHeight = 10;
-fontSize = 10; fontName = 'Times New Roman';
-
-fig = figure('Units','centimeters','Position',[2,2,figWidth,figHeight],'Color','w');
 t = tiledlayout(2,3,'TileSpacing','compact','Padding','compact');
 
-%% 4. DRAW 5 SUBFIGURES 3D
-labels = {'(a)','(b)','(c)','(d)','(e)'};
-axs = gobjects(1,5);
+labels = {'(a)','(b)','(c)','(d)','(e)','(f)'};
+axs = gobjects(1, length(dataList));
 
-for i = 1:5
+for i = 1: length(dataList)
     axs(i) = nexttile;
-    
     surf(X, Y, dataList{i,1}, 'EdgeColor','none');
     shading flat;
     colormap(gca, turbo);
     clim(z_lims);
     zlim(z_lims);
     
-    axis tight; axis vis3d;
-    view(3); pbaspect([1 1 0.6]);
+    % Cấu hình trục và góc nhìn
+    axis tight; 
+    axis vis3d;           % Giữ tỉ lệ khi xoay
+    view(-45, 30);        % [QUAN TRỌNG] Cố định góc nhìn để chữ xoay đúng hướng
+    pbaspect([1 1 0.6]);  % Tỉ lệ hộp
     
-    % Thêm nhãn (a), (b), ...
-    title(labels{i}, 'FontWeight','bold', 'FontSize', fontSize+1, ...
-          'FontName','Times New Roman', 'Interpreter','latex');
-
     % Trục X
-        xlabel('x (mm)','Interpreter','latex');
-
+    hx = xlabel('$x$ (mm)', 'Interpreter', 'latex');
+    set(hx, 'Rotation', 30);                % Xoay nghiêng (chỉnh số này nếu cần)
+    set(hx, 'VerticalAlignment', 'middle'); 
+    set(hx, 'HorizontalAlignment', 'left'); % Căn lề trái để bám theo trục
+    
     % Trục Y
-        ylabel('y (mm)','Interpreter','latex');
+    hy = ylabel('$y$ (mm)', 'Interpreter', 'latex');
+    set(hy, 'Rotation', -25);               % Xoay nghiêng ngược lại
+    set(hy, 'VerticalAlignment', 'middle');
+    set(hy, 'HorizontalAlignment', 'right'); % Căn lề phải để bám theo trục
+
+    % --- 3. XỬ LÝ TRỤC Z (MỚI THÊM) ---
+    % Bạn thay đổi nội dung '$z$ (mm)' thành đơn vị thực tế (ví dụ: 'Phase (rad)')
+    hz = zlabel('phase (rad)', 'Interpreter', 'latex'); 
+    
+    % Mẹo xử lý trục Z:
+    set(hz, 'Rotation', 90); % Xoay 90 độ để chạy dọc theo trục đứng
+    % set(hz, 'Rotation', 0); % Hoặc để 0 nếu muốn chữ nằm ngang dễ đọc hơn
+    
+    % Đẩy chữ Z ra xa trục một chút để không đè lên số (Quan trọng)
+    set(hz, 'Units', 'normalized'); % Chuyển đơn vị về 0-1 để dễ chỉnh
+    % Lấy vị trí hiện tại
+    z_pos = get(hz, 'Position');    
+    % Dịch sang trái một chút (giá trị âm ở phần tử đầu tiên)
+    set(hz, 'Position', z_pos + [-0.0 0 0]);
 
 
-    set(gca,'FontName',fontName,'FontSize',fontSize,'LineWidth',1,'TickLabelInterpreter','latex');
+    title(labels{i}, 'FontWeight','normal', 'FontSize', fontSize, ...
+          'FontName', fontName, 'Interpreter', 'latex');
+    set(gca, 'FontName', fontName, 'FontSize', fontSize, ...
+        'LineWidth', 1, 'TickLabelInterpreter', 'latex');
     box on;
-end
 
-%% 5. COLORBAR (CHUNG)
+
+end
 cb = colorbar;
-cb.Layout.Tile = 'east';
-cb.Label.String = 'Phase (rad)';
-cb.Label.Interpreter = 'latex';
-cb.Label.FontSize = fontSize;
-cb.TickLabelInterpreter = 'latex';
+cb.Layout.Tile = 'east'; 
 cb.Limits = z_lims;
 
-%% 6. EXPORT
-exportName = 'Fig_Comparison_5_Images_3D_MM_labels';
-exportgraphics(fig, [exportName '.png'], 'Resolution', 600);
+cb.TickLabelInterpreter = 'latex';
+cb.FontSize = fontSize;
 
+cb.Label.String = 'Phase (rad)';
+cb.Label.Interpreter = 'latex';
+cb.Label.FontSize = fontSize + 1;
 
-%% ảnh màu 3D-jet
-fig = figure('Units','centimeters','Position',[2,2,figWidth,figHeight],'Color','w');
+saveFolder = fullfile(pwd, 'ExportedFigures_experiments');
+if ~exist(saveFolder, 'dir')
+    mkdir(saveFolder);
+end
+timestamp = datestr(now, 'yyyy-mm-dd_HH-MM-SS');
+
+fileName = ['Fig_Comparison_5_reals_3D_MM_turbo' timestamp];   % đổi ten anh
+fullPath = fullfile(saveFolder, fileName);
+export_fig([fullPath '.png'], '-png', '-r600');       % PNG 600 dpi
+export_fig([fullPath '.eps'], '-eps', '-opengl');   % EPS vector
+
+%% anh 3D -jet
+fig = figure('Units', 'centimeters', ...
+             'Position', [2, 2, figWidth, figHeight], ...
+             'Color', 'w', ...
+             'Name', 'Fig_Comparison_5_real_3D_MM_jet', ...
+             'NumberTitle', 'off');
+
 t = tiledlayout(2,3,'TileSpacing','compact','Padding','compact');
 
 %% 4. DRAW 5 SUBFIGURES 3D
-labels = {'(a)','(b)','(c)','(d)','(e)'};
-axs = gobjects(1,5);
+labels = {'(a)','(b)','(c)','(d)','(e)','(f)'};
+axs = gobjects(1, length(dataList));
 
-for i = 1:5
+for i = 1: length(dataList)
     axs(i) = nexttile;
-    
     surf(X, Y, dataList{i,1}, 'EdgeColor','none');
     shading flat;
-    colormap(gca, "jet");
+    colormap(gca, turbo);
     clim(z_lims);
     zlim(z_lims);
     
-    axis tight; axis vis3d;
-    view(3); pbaspect([1 1 0.6]);
+    % Cấu hình trục và góc nhìn
+    axis tight; 
+    axis vis3d;           % Giữ tỉ lệ khi xoay
+    view(-45, 30);        % [QUAN TRỌNG] Cố định góc nhìn để chữ xoay đúng hướng
+    pbaspect([1 1 0.6]);  % Tỉ lệ hộp
     
-    % Thêm nhãn (a), (b), ...
-    title(labels{i}, 'FontWeight','bold', 'FontSize', fontSize+1, ...
-          'FontName','Times New Roman', 'Interpreter','latex');
-
     % Trục X
-        xlabel('x (mm)','Interpreter','latex');
-
+    hx = xlabel('$x$ (mm)', 'Interpreter', 'latex');
+    set(hx, 'Rotation', 30);                % Xoay nghiêng (chỉnh số này nếu cần)
+    set(hx, 'VerticalAlignment', 'middle'); 
+    set(hx, 'HorizontalAlignment', 'left'); % Căn lề trái để bám theo trục
+    
     % Trục Y
-        ylabel('y (mm)','Interpreter','latex');
+    hy = ylabel('$y$ (mm)', 'Interpreter', 'latex');
+    set(hy, 'Rotation', -25);               % Xoay nghiêng ngược lại
+    set(hy, 'VerticalAlignment', 'middle');
+    set(hy, 'HorizontalAlignment', 'right'); % Căn lề phải để bám theo trục
+
+    % --- 3. XỬ LÝ TRỤC Z (MỚI THÊM) ---
+    % Bạn thay đổi nội dung '$z$ (mm)' thành đơn vị thực tế (ví dụ: 'Phase (rad)')
+    hz = zlabel('phase (rad)', 'Interpreter', 'latex'); 
+    
+    % Mẹo xử lý trục Z:
+    set(hz, 'Rotation', 90); % Xoay 90 độ để chạy dọc theo trục đứng
+    % set(hz, 'Rotation', 0); % Hoặc để 0 nếu muốn chữ nằm ngang dễ đọc hơn
+    
+    % Đẩy chữ Z ra xa trục một chút để không đè lên số (Quan trọng)
+    set(hz, 'Units', 'normalized'); % Chuyển đơn vị về 0-1 để dễ chỉnh
+    % Lấy vị trí hiện tại
+    z_pos = get(hz, 'Position');    
+    % Dịch sang trái một chút (giá trị âm ở phần tử đầu tiên)
+    set(hz, 'Position', z_pos + [-0.0 0 0]);
 
 
-    set(gca,'FontName',fontName,'FontSize',fontSize,'LineWidth',1,'TickLabelInterpreter','latex');
+    title(labels{i}, 'FontWeight','normal', 'FontSize', fontSize, ...
+          'FontName', fontName, 'Interpreter', 'latex');
+    set(gca, 'FontName', fontName, 'FontSize', fontSize, ...
+        'LineWidth', 1, 'TickLabelInterpreter', 'latex');
     box on;
-end
 
-%% 5. COLORBAR (CHUNG)
+
+end
 cb = colorbar;
-cb.Layout.Tile = 'east';
-cb.Label.String = 'Phase (rad)';
-cb.Label.Interpreter = 'latex';
-cb.Label.FontSize = fontSize;
-cb.TickLabelInterpreter = 'latex';
+cb.Layout.Tile = 'east'; 
 cb.Limits = z_lims;
 
-%% 6. EXPORT
-exportName = 'Fig_Comparison_5_Images_3D_MM_labels_jet';
-exportgraphics(fig, [exportName '.png'], 'Resolution', 600);
+cb.TickLabelInterpreter = 'latex';
+cb.FontSize = fontSize;
 
+cb.Label.String = 'Phase (rad)';
+cb.Label.Interpreter = 'latex';
+cb.Label.FontSize = fontSize + 1;
 
+saveFolder = fullfile(pwd, 'ExportedFigures_experiments');
+if ~exist(saveFolder, 'dir')
+    mkdir(saveFolder);
+end
+timestamp = datestr(now, 'yyyy-mm-dd_HH-MM-SS');
 
+fileName = ['Fig_Comparison_5_real_3D_MM_jet' timestamp];   % đổi ten anh
+fullPath = fullfile(saveFolder, fileName);
+export_fig([fullPath '.png'], '-png', '-r600');       % PNG 600 dpi
+export_fig([fullPath '.eps'], '-eps', '-opengl');   % EPS vector
 
+save("cchuan_phase_comparison.mat");
 toc
 %%
 function varargout = crop_multiple_to_smallest(varargin)

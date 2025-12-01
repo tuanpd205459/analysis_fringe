@@ -411,7 +411,6 @@ title("Anh wrapped_phase");
 
 
 %% 10. Refine artifacts points
-
 % Cắt biên để hiển thị tốt hơn
 offset = 7;
 finalUnwrappedPhase = finalUnwrappedPhase(offset+1:end-offset, offset+1:end-offset);
@@ -423,7 +422,7 @@ title("Anh final UnwrappedPhase");
 %     'BoundaryCondition', 'symmetric', 'BoundaryWidth', 2, 'MaxIterations', 150);
 
 %%
-save('chuong_trinh_chinh_tao_phase.mat');
+save('cchuong_trinh_chinh_tao_phase.mat');
 
 
 %%
