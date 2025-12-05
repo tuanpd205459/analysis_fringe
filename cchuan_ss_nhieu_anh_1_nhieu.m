@@ -383,8 +383,8 @@ for idxSNR = 1:length(snr_values)
 
     % --- Crop tất cả về cùng kích thước nhỏ nhất ---
     [phi_goldstein, phi_tie_dct, phi_quality, phi_wls, phi_proposed, ...
-        object_phase_without_noise] = ...
-        crop_multiple_to_smallest(phi_goldstein, phi_tie_dct, phi_quality, phi_wls, phi_proposed, object_phase_without_noise);
+        object_phase] = ...
+        crop_multiple_to_smallest(phi_goldstein, phi_tie_dct, phi_quality, phi_wls, phi_proposed, object_phase);
 
     final_phi_proposed = phi_proposed;
     final_phi_goldstein = phi_goldstein;
@@ -393,9 +393,9 @@ for idxSNR = 1:length(snr_values)
     final_phi_tie_dct = phi_tie_dct;
 
 
-        phases = { unwrapped_Phase_TIE_FFT, ...
-               unwrapped_Phase_noncontinue, unwrapped_Phase_2dweight, ...
-               unwrapped_Phase_goldstein, unwrapped_Phase_proposal };
+    phases = { final_phi_goldstein, ...
+        final_phi_quality, final_phi_tie_dct, ...
+        final_phi_wls, final_phi_proposed };
 
     % --- B3: tính sai số cho từng thuật toán ---
     for k = 1:nPhase

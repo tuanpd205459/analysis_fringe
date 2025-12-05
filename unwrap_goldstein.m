@@ -15,7 +15,7 @@ function [im_unwrapped, branch_cuts] = unwrap_goldstein(im_phase, im_mask, im_ma
 
     %% 1. Xử lý tham số đầu vào mặc định
     if nargin < 4
-        max_box_radius = 4;
+        max_box_radius = 10;
     end
     if nargin < 3 || isempty(im_mag)
         im_mag = ones(size(im_phase)); % Nếu không có ảnh biên độ, giả sử đồng nhất

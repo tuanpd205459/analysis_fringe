@@ -6,7 +6,7 @@ addpath('D:\tuan\analysis\analysis_fringe\export_fig');
 %% --- 1. CẤU HÌNH THAM SỐ (PARAMETERS) ---
 % load ảnh mô phỏng
 % Mảng để lưu kết quả RMSE cho mỗi giá trị SNR
-snr_values = 0.1;
+snr_values = 0.15;
 results_rmse = zeros(1, length(snr_values));
 
 nSNR = numel(snr_values);

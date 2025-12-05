@@ -17,8 +17,8 @@ mask = rho <= 1;
 % pos_coeff = [1, 2, 3, 4, 5, 6, 7 ]; 
 % val_coeff = [];
 
-pos_coeff = 4:16;      % index các đa thức Zernike
-max_amp = 3;
+pos_coeff = 4:10;      % index các đa thức Zernike
+max_amp = 5;
 val_coeff = (rand(1, length(pos_coeff)) - 0.5) * 2 * max_amp;
 
 saveFolder = fullfile(pwd, 'input_create_Zernike');

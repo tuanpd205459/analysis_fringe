@@ -6,7 +6,7 @@ addpath("D:\tuan\analysis\analysis_fringe\export_fig");
 
 %%
 % --- Unwrap phase bằng các thuật toán ---
-phi_tie_dct      = Unwrap_TIE_DCT_Iter(wrapped_phase);     % TIE với DCT
+phi_tie_dct      = unwrap_TIE_FD_DCT(wrapped_phase);     % TIE với DCT
 phi_quality      = unwrap_quality(wrapped_phase);          % Quality-guided
 phi_wls          = phase_unwrap_2dweight(wrapped_phase);      % 2D Weighted LS
 phi_proposed     = finalUnwrappedPhase;                                     % Proposed / Hybrid

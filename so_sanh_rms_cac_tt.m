@@ -1,17 +1,11 @@
 % vòng lặp để tính % sai số
 clc; clear; close all;
 
-% --- Skeleton giả định (test) ---
-%% 1. KHỞI TẠO
-% fprintf('Bắt đầu quy trình mô phỏng và tái tạo...\n');
-% Tạo một vector các giá trị SNR để kiểm tra (từ nhiễu thấp đến cao)
-% Nếu muốn theo thứ tự giảm dần (giống như bạn đang dùng)
-% snr_values = 25:-1:13;   % [35 33 31 ... 13]
-snr_values = 35;   % [35 33 31 ... 13]
 
-% Mảng để lưu kết quả RMSE cho mỗi giá trị SNR
+% snr_values = 25:-1:13;   % [35 33 31 ... 13]
+snr_values =  [20 :-2: 13];
+
 results_rmse = zeros(1, length(snr_values));
-% <<< --------------------------------------- >>>
 
 nSNR = numel(snr_values);
 
@@ -27,74 +21,34 @@ results_rmse_all = zeros(nPhase, nSNR);
 % <<< --- BẮT ĐẦU VÒNG LẶP CHÍNH --- >>>
 for idxSNR = 1:length(snr_values)
 
-%% 2. MÔ PHỎNG HOLOGRAM
-% fprintf('--> Bước 1: Mô phỏng Hologram...\n');
-% --- Thiết lập thông số ---
 M = 512; % Kích thước ảnh (chiều cao)
 N = 512; % Kích thước ảnh (chiều rộng)
-% snr = 15;
 snr = snr_values(idxSNR);
-% fprintf('\n====================================================\n');
 fprintf('ĐANG CHẠY MÔ PHỎNG VỚI SNR = %.1f dB\n', snr);
-% fprintf('====================================================\n');
 auto_fft = 0;
 
-% 
-% % nhiễu - phương sai: sigma
-% sigma = pi/5;
-% noise_level = 0;
-% noise = noise_level * randn(N, N) .* sigma;
-
 load("my_create_zernike.mat");
-N = size(surface,1);
-[X, Y] = meshgrid(linspace(-1,1,N), linspace(-1,1,M));
 
-object_phase_without_noise = surface;
+object_phase_without_noise = surface_square;
 
-
-%%
-% Thêm nhiễu vào pha đối tượng
 object_phase = awgn(object_phase_without_noise, snr, 'measured', 'db');
-
-% 3. TẠO HOLOGRAM
-% fprintf('--> Bước 2: Tạo Hologram...\n');
 
 % --- Thiết lập thông số sóng mang ---
 fx = 40 / N; % Tần số sóng mang
 fy = -60 / M;
 [X, Y] = meshgrid(1:N, 1:M);
 
-% Cường độ nền và điều biến
 a = 1.0; % Background intensity
 b = 0.8; % Modulation depth
 
-% Sóng mang phẳng (plane wave carrier)
 carrier = 2 * pi * (fx * X + fy * Y);
-
-% --- Tạo hologram (ảnh giao thoa) theo công thức mới ---
 hologram = a + b .* cos(carrier + object_phase);
-
-% % --- Hiển thị Hologram ---
-% figure;
-% imshow(hologram, []);
-% title('Ảnh Hologram (Giao thoa) có nhiễu');
-%% 3. Tạo bề mặt interferogram
 hologram = mat2gray(hologram);
 
 %% 5. Noise removal
 hologram = imgaussfilt(hologram, 1);
-% hologram = medfilt2(hologram, [3 3]);
-% hologram = wiener2(hologram, [5 5]);
-% figure;
-% imshow(hologram);
-% colorbar;
-% title('hologram sau noise removal : ');
-%% 6. Histogram equalization
 hologram = adapthisteq(hologram);
-% figure;
-% imshow(hologram);
-% colorbar;
-% title('hologram sau equaliztion histogram : ');
+
 
 input_image = hologram;
 %% 7. ƯỚC LƯỢNG PHA BẰNG PHƯƠNG PHÁP PHÂN TÍCH VÂN
@@ -396,11 +350,13 @@ phi_est = phi_est - plane_phase - (max(phi_est(:)- max(plane_phase(:))))/2;
 
 [finalUnwrappedPhase, kMap] = unwrapUsingEstimate(phi_est, wrapped_phase);
 
-
+figure;
+surf(finalUnwrappedPhase, "EdgeColor","none");
+title("anh sau khi up");
 %% 10. Refine artifacts points
 
-% [finalUnwrappedPhase, ~, ~] = correct_sparse_artifacts_iterative(finalUnwrappedPhase, ...
-%     'BoundaryCondition', 'symmetric', 'BoundaryWidth', 2, 'MaxIterations', 150);
+[finalUnwrappedPhase, ~, ~] = correct_sparse_artifacts_iterative(finalUnwrappedPhase, ...
+    'BoundaryCondition', 'symmetric', 'BoundaryWidth', 2, 'MaxIterations', 150);
 
 % figure("Name","Kết quả sau refine");
 % surf(finalUnwrappedPhase, 'EdgeColor', 'none');
@@ -453,7 +409,7 @@ unwrapped_Phase_proposal = finalUnwrappedPhase;
         phase = phases{k};
 
         % Loại offset
-        offset = median(phase(:), 'omitnan') - median(object_phase(:), 'omitnan');
+        offset = median(phase(:), 'omitnan') - median(object_phase_without_noise(:), 'omitnan');
         phase_adj = phase - offset;
 
         % Sai số (scalar)
@@ -463,16 +419,6 @@ unwrapped_Phase_proposal = finalUnwrappedPhase;
         % Lưu đúng 1 số
         results_rmse_all(k,idxSNR) = rmse;
     end
-
-%     % Sau vòng for k = 1:nPhase
-%     fprintf('Kết quả RMSE tại SNR = %.1f dB:\n', snr_values(idxSNR));
-%     fprintf('%20s\t%.4e\n','TIE-FFT',       results_rmse_all(1,idxSNR));
-%     fprintf('%20s\t%.4e\n','Non-continuous',results_rmse_all(2,idxSNR));
-%     fprintf('%20s\t%.4e\n','2D Weighted LS',results_rmse_all(3,idxSNR));
-%     fprintf('%20s\t%.4e\n','Goldstein',     results_rmse_all(4,idxSNR));
-%     fprintf('%20s\t%.4e\n','Proposed',      results_rmse_all(5,idxSNR));
-%     fprintf('--------------------------------------\n');
-
 
 end
 %% HIỂN THỊ KẾT QUẢ SAU TOÀN BỘ VÒNG LẶP
